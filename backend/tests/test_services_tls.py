@@ -5,8 +5,12 @@ The second group needs a Qdrant server that has TLS and an API key switched on a
 
     ASTRAL_TEST_QDRANT_TLS=https://127.0.0.1:56334   ASTRAL_TEST_QDRANT_TLS_CA=<path to the CA pem>   ASTRAL_TEST_QDRANT_TLS_KEY=<api key>
 
-Verified against Qdrant (single node, TLS with a throwaway CA, API key). NOT verified: OpenSearch (its Basic auth and TLS go through the
-same code, but no OpenSearch server was run with security on), mutual TLS, certificate rotation, or a cluster.
+The third group needs an OpenSearch server with its security plugin on (HTTPS with a throwaway CA, Basic auth) and skips otherwise:
+
+    ASTRAL_TEST_OPENSEARCH_SECURE=https://127.0.0.1:59200   ASTRAL_TEST_OPENSEARCH_SECURE_CA=<path to the CA pem>   ASTRAL_TEST_OPENSEARCH_SECURE_AUTH=admin:<password>
+
+Verified against Qdrant (single node, TLS with a throwaway CA, API key) and against OpenSearch 2.17.1 (single node, security plugin on, HTTPS
+with a throwaway CA, Basic auth). NOT verified: mutual TLS, certificate rotation, role-limited users, or a cluster.
 """
 
 from __future__ import annotations
@@ -25,6 +29,10 @@ URL = os.environ.get("ASTRAL_TEST_QDRANT_TLS")
 CA = os.environ.get("ASTRAL_TEST_QDRANT_TLS_CA")
 KEY = os.environ.get("ASTRAL_TEST_QDRANT_TLS_KEY")
 needs_tls = pytest.mark.skipif(not (URL and CA and KEY), reason="ASTRAL_TEST_QDRANT_TLS(_CA/_KEY) not set: no TLS Qdrant server available")
+OS_URL = os.environ.get("ASTRAL_TEST_OPENSEARCH_SECURE")
+OS_CA = os.environ.get("ASTRAL_TEST_OPENSEARCH_SECURE_CA")
+OS_AUTH = os.environ.get("ASTRAL_TEST_OPENSEARCH_SECURE_AUTH")
+needs_os_secure = pytest.mark.skipif(not (OS_URL and OS_CA and OS_AUTH), reason="ASTRAL_TEST_OPENSEARCH_SECURE(_CA/_AUTH) not set: no secured OpenSearch available")
 
 
 def _ca_file(tmp_path):
@@ -102,3 +110,57 @@ def test_with_the_ca_and_the_key_vectors_round_trip_over_tls(monkeypatch):
     finally:
         svc._c("DELETE", f"/collections/{name}")
     assert name not in svc.collections()
+
+
+# --------------------------------------------------------------------------- OpenSearch with security on
+@needs_os_secure
+def test_a_secured_opensearch_is_refused_until_its_ca_is_named_and_the_password_never_leaks(monkeypatch):
+    monkeypatch.delenv("ASTRAL_SERVICES_CA_FILE", raising=False)
+    services._tls_context.cache_clear()
+    with pytest.raises(services.ServiceError) as e:
+        services.OpenSearchService(OS_URL, auth=OS_AUTH).ping()
+    assert "certificate" in str(e.value).lower()
+    assert OS_AUTH.split(":", 1)[1] not in str(e.value)
+
+
+@needs_os_secure
+def test_a_missing_or_wrong_password_is_refused_with_a_clear_status(monkeypatch):
+    monkeypatch.setenv("ASTRAL_SERVICES_CA_FILE", OS_CA)
+    services._tls_context.cache_clear()
+    for auth in (None, "admin:not-the-password"):
+        with pytest.raises(services.ServiceError) as e:
+            services.OpenSearchService(OS_URL, auth=auth).ping()
+        assert "401" in str(e.value)
+        assert "not-the-password" not in str(e.value)
+
+
+@needs_os_secure
+def test_with_the_ca_and_the_password_text_round_trips_and_stays_case_isolated(db, monkeypatch):
+    from test_services import add_chunks, new_case
+
+    from astral import retrieval
+
+    monkeypatch.setenv("ASTRAL_SERVICES_CA_FILE", OS_CA)
+    services._tls_context.cache_clear()
+    ix = f"astral-test-{uuid.uuid4().hex[:8]}"
+    text = services.OpenSearchService(OS_URL, index=ix, auth=OS_AUTH)
+    info = text.ping()
+    assert info["distribution"] == "opensearch"
+    svc = services.Services(text, None)
+    a, b = new_case(db), new_case(db)
+    try:
+        with db.connection() as conn:
+            add_chunks(conn, a, ["The vessel Marlin docked at pier nine", "customs inspected the containers"])
+            add_chunks(conn, b, ["The vessel Marlin appears only in the other case"])
+            r = retrieval.search(conn, a, "vessel Marlin pier", k=5, services=svc)
+            assert "opensearch" in r["rankers"]
+            assert r["hits"][0]["text"].startswith("The vessel Marlin docked")
+            assert all("other case" not in h["text"] for h in r["hits"])
+            assert text.count(a) == 2
+            svc.forget_case(conn, a)
+        assert text.count(a) == 0
+    finally:
+        try:
+            services._call("DELETE", f"{OS_URL}/{ix}", auth=OS_AUTH, ok=(200, 404))
+        except services.ServiceError:
+            pass

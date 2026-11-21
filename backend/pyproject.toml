@@ -41,9 +41,9 @@ dependencies = [
 # fake models; the features' own extras (dense, faces, pdf) bring them in for real use.
 dev = ["pytest>=8", "httpx>=0.27", "pypdf>=4", "numpy>=1.26", "reportlab>=4"]
 # Face detection/embedding (YuNet + SFace through OpenCV) and perceptual hashing.
-faces = ["opencv-python-headless>=4.10,<5"]
+faces = ["opencv-python-headless>=4.10,<6"]
 # Object detection and tracking (RT-DETR through ONNX Runtime on the CPU; ffmpeg must be on PATH for video).
-detect = ["opencv-python-headless>=4.10,<5", "onnxruntime>=1.18", "numpy>=1.26"]
+detect = ["opencv-python-headless>=4.10,<6", "onnxruntime>=1.18", "numpy>=1.26"]
 # Write-once preservation in an S3 bucket with Object Lock.
 worm = ["boto3>=1.34"]
 # Dense retrieval and reranking (ONNX, in-process): ASTRAL_EMBED_MODEL / ASTRAL_RERANK_MODEL.

@@ -15,9 +15,9 @@ project's rules:
     Postgres path. The score is a similarity, never a verdict.
   * No credentials are stored here; endpoints and any basic-auth value come from configuration/secrets.
 
-Qdrant has been run here with TLS (a private CA from ASTRAL_SERVICES_CA_FILE) and an API key. Untested:
-clusters of more than one node, OpenSearch with its security plugin on, mutual TLS, and behaviour at corpus
-sizes where approximate indexes would matter.
+Qdrant (API key) and OpenSearch (Basic auth, security plugin on) have been run here over TLS with a private CA
+from ASTRAL_SERVICES_CA_FILE. Untested: clusters of more than one node, mutual TLS, role-limited users, and
+behaviour at corpus sizes where approximate indexes would matter.
 """
 
 from __future__ import annotations
