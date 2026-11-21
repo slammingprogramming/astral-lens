@@ -125,7 +125,7 @@ def test_blob_corruption_is_detected_on_read(db, kit, actor, tmp_path):
     with db.connection() as conn:
         ing = kit.store.ingest(conn, actor, kit.case, b"original", acquired_by="u")
         path = kit.store._path(ing.sha256)
-        os.chmod(path, stat.S_IWRITE)
+        os.chmod(path, stat.S_IWRITE | stat.S_IREAD)   # on POSIX S_IWRITE alone is write-only, and the read below would fail
         path.write_bytes(b"tampered")
         with pytest.raises(IntegrityError):
             kit.store.read(conn, actor, kit.case, ing.sha256)
