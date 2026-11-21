@@ -156,6 +156,10 @@ class CypherBody(BaseModel):
     query: str
 
 
+class ContextBody(BaseModel):
+    limit: int = Field(50, ge=1, le=500)
+
+
 class AnnotationBody(BaseModel):
     kind: str
     body: str
@@ -1461,6 +1465,23 @@ def create_app(settings: Settings | None = None, db: Database | None = None) -> 
                 "not_configured": [n for n, on in (("dense embedder", app.state.services.dense),
                                                    ("reranker", app.state.services.dense and app.state.services.dense.can_rerank)) if not on],
                 "note": "Without a model, answers are verbatim quotations from the case; they are verified the same way."}
+
+    @app.post("/cases/{case_id}/retrieval/context")
+    def retrieval_context(case_id: uuid.UUID, body: ContextBody) -> dict[str, Any]:
+        """Have the configured model write a one-sentence situating header for passages that lack one (a search aid, not
+        evidence). Explicit and bounded; passages are the case's own text, sent only where the case's egress rule allows."""
+        from astral import audit, contextual, retrieval
+
+        with app.state.db.connection() as conn:
+            policy.authorize(conn, actor, "plugin.invoke", case_id)
+            client = _llm(conn, case_id)
+            if client is None:
+                raise HTTPException(400, "no language model is configured (ASTRAL_LLM_URL); context headers need one")
+            retrieval.ensure_indexed(conn, app.state.store, actor, case_id)
+            out = contextual.generate(conn, app.state.store, actor, case_id, client, limit=body.limit)
+            audit.record(conn, actor, "ai.contextualize", case_id=case_id, target_kind="text_chunk",
+                         detail={k: out[k] for k in ("written", "ungrounded", "unusable", "model")})
+        return out
 
     @app.post("/cases/{case_id}/ask", status_code=201)
     def ask(case_id: uuid.UUID, body: AskBody) -> dict[str, Any]:

@@ -22,8 +22,11 @@ behaviour at corpus sizes where approximate indexes would matter.
 from __future__ import annotations
 
 import base64
+import functools
 import json
+import os
 import re
+import ssl
 import urllib.error
 import urllib.request
 import uuid
@@ -44,6 +47,18 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+@functools.lru_cache(maxsize=4)
+def _tls_context(ca_file: str | None) -> ssl.SSLContext:
+    # A service behind a private CA is trusted by naming that CA's file; verification is never switched off.
+    return ssl.create_default_context(cafile=ca_file) if ca_file else ssl.create_default_context()
+
+
+def _opener() -> urllib.request.OpenerDirector:
+    """No redirects (a service that redirects is not followed); https verified against the system CAs, or against
+    ASTRAL_SERVICES_CA_FILE when the services use a private CA."""
+    return urllib.request.build_opener(_NoRedirect(), urllib.request.HTTPSHandler(context=_tls_context(os.environ.get("ASTRAL_SERVICES_CA_FILE") or None)))
+
+
 def _call(method: str, url: str, body: Any = None, *, auth: str | None = None, ndjson: bool = False, ok: tuple[int, ...] = (200, 201)) -> Any:
     data = None
     headers = {"Accept": "application/json"}
@@ -54,7 +69,7 @@ def _call(method: str, url: str, body: Any = None, *, auth: str | None = None, n
         headers["Authorization"] = "Basic " + base64.b64encode(auth.encode()).decode()
     req = urllib.request.Request(url, data=data, method=method, headers=headers)
     try:
-        with urllib.request.build_opener(_NoRedirect()).open(req, timeout=TIMEOUT) as r:
+        with _opener().open(req, timeout=TIMEOUT) as r:
             raw = r.read()
             status = r.status
     except urllib.error.HTTPError as e:
@@ -141,7 +156,7 @@ class QdrantService:
             headers["api-key"] = self.api_key
         req = urllib.request.Request(self.url + path, data=data, method=method, headers=headers)
         try:
-            with urllib.request.build_opener(_NoRedirect()).open(req, timeout=TIMEOUT) as r:
+            with _opener().open(req, timeout=TIMEOUT) as r:
                 raw, status = r.read(), r.status
         except urllib.error.HTTPError as e:
             raw, status = e.read(), e.code
@@ -157,6 +172,9 @@ class QdrantService:
 
     def ping(self) -> dict[str, Any]:
         r = self._c("GET", "/")
+        # Qdrant serves "/" without an API key, so on its own it says nothing about whether our key is accepted. An
+        # authenticated read makes a missing or wrong key show up here, in the status, rather than at the first search.
+        self._c("GET", "/collections")
         return {"version": r.get("version"), "title": r.get("title")}
 
     @staticmethod
@@ -394,8 +412,6 @@ class Services:
 
     @classmethod
     def from_settings(cls, settings: Any) -> "Services":
-        import os
-
         text = vec = None
         if getattr(settings, "opensearch_url", None):
             text = OpenSearchService(settings.opensearch_url, index=settings.opensearch_index, auth=os.environ.get("ASTRAL_OPENSEARCH_AUTH") or None)

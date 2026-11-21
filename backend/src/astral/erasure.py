@@ -51,7 +51,7 @@ def erase_case(
     try:
         counts: dict[str, int] = {}
         for table in ("assertion_retraction", "judgment_retraction", "judgment", "assertion",
-                      "artifact_acquisition", "search_run", "face", "image_hash", "text_chunk", "ai_plan", "comment", "assignment", "graph_annotation", "graph_view", "worm_case", "service_sync", "text_embedding", "machine_run", "machine_schedule", "monitor_run", "monitor", "watch_term", "job", "role_grant"):
+                      "artifact_acquisition", "search_run", "face", "image_hash", "text_chunk_context", "text_chunk", "ai_plan", "comment", "assignment", "graph_annotation", "graph_view", "worm_case", "service_sync", "text_embedding", "machine_run", "machine_schedule", "monitor_run", "monitor", "watch_term", "job", "role_grant"):
             counts[table] = conn.execute(
                 f"DELETE FROM {table} WHERE case_id = %s", (case_id,)).rowcount
         drop_projections(conn, case_id)

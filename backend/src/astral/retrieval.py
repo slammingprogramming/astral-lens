@@ -96,6 +96,20 @@ def _fts_ids(conn: psycopg.Connection, case_id: uuid.UUID, query: str, limit: in
         " ORDER BY ts_rank(tsv, to_tsquery('simple', %s)) DESC, id LIMIT %s", (case_id, q, q, limit))]
 
 
+def _ctx_ids(conn: psycopg.Connection, case_id: uuid.UUID, query: str, limit: int) -> list[int] | None:
+    """Chunks whose model-written context header matches the question; None when the case has no headers (the ranker
+    did not run). A header is a search aid only: it is model output, not evidence (astral.contextual)."""
+    if not conn.execute("SELECT 1 FROM text_chunk_context WHERE case_id=%s LIMIT 1", (case_id,)).fetchone():
+        return None
+    toks = content_tokens(query)
+    if not toks:
+        return []
+    q = " | ".join(dict.fromkeys(toks))
+    return [r["id"] for r in conn.execute(
+        "SELECT chunk_id AS id FROM text_chunk_context WHERE case_id=%s AND tsv @@ to_tsquery('simple', %s)"
+        " ORDER BY ts_rank(tsv, to_tsquery('simple', %s)) DESC, chunk_id LIMIT %s", (case_id, q, q, limit))]
+
+
 def _fuzzy_ids(conn: psycopg.Connection, case_id: uuid.UUID, query: str, limit: int) -> list[int]:
     from rapidfuzz import fuzz
 
@@ -113,6 +127,10 @@ def search(conn: psycopg.Connection, case_id: uuid.UUID, query: str, *, k: int =
     degradation is visible."""
     fts, fuzzy = _fts_ids(conn, case_id, query, 50), _fuzzy_ids(conn, case_id, query, 50)
     rankings, rankers, notes = [fts, fuzzy], ["fts", "fuzzy"], list(_NOTES)
+    ctx = _ctx_ids(conn, case_id, query, 50)
+    if ctx is not None:
+        rankings.append(ctx)
+        rankers.append("context-headers")
     dense_rank: list[int] = []
     if services is not None:
         ids, why = services.text_ids(conn, case_id, query, 50)
@@ -146,12 +164,18 @@ def search(conn: psycopg.Connection, case_id: uuid.UUID, query: str, *, k: int =
         elif why:
             notes.append(why)
     fused = fused[:k]
+    headers = {r["chunk_id"]: r["header"] for r in conn.execute(
+        "SELECT chunk_id, header FROM text_chunk_context WHERE chunk_id = ANY(%s)", ([i for i, _ in fused],))} if ctx is not None else {}
     hits = [{"chunk_id": i, "text_sha": bytes(rows[i]["text_sha"]).hex(), "start": rows[i]["start_char"],
              "end": rows[i]["end_char"], "text": rows[i]["body"], "rrf": round(s, 5),
              "fts_rank": fts.index(i) + 1 if i in fts else None, "fuzzy_rank": fuzzy.index(i) + 1 if i in fuzzy else None,
+             "context_rank": ctx.index(i) + 1 if ctx and i in ctx else None, "context_header": headers.get(i),
              "dense_rank": dense_rank.index(i) + 1 if i in dense_rank else None,
              "rerank_score": round(rerank_score[i], 4) if i in rerank_score else None}
             for i, s in fused]
+    if any(h["context_rank"] and not h["fts_rank"] for h in hits):
+        notes.append("some passages were found through a model-written context header (a search aid, not evidence); "
+                     "the passage text shown is the stored text, unchanged")
     return {"hits": hits, "rankers": rankers, "notes": notes}
 
 
