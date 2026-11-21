@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import cytoscape from "cytoscape";
 import { api, post, put } from "./api";
-import { Card, ErrorBox, Outcome, short, useAsync } from "./ui";
+import { Card, ErrorBox, Outcome, short, useAsync, AuthLink } from "./ui";
 import { colorOf } from "./viewsB";
+import { buildCypher } from "./cypherBuilder";
 
 // The analyst workbench: select a node, run a connector on it, watch the graph grow, annotate, analyse.
 // Everything a transform adds goes through the assertion log; notes, colours and saved views are workspace
@@ -104,9 +105,9 @@ export function WorkbenchView({ caseId, bump, onChanged }: { caseId: string; bum
           </select>
           <button onClick={saveView}>Save view</button>
           <span className="muted">Export:</span>
-          {["graphml", "json", "nodes.csv", "edges.csv"].map((f) => <a key={f} href={`/cases/${caseId}/export/graph?format=${f}`} download>{f}</a>)}
-          <a href={`/cases/${caseId}/report.html`} target="_blank" rel="noreferrer">report</a>
-          <a href={`/cases/${caseId}/report.pdf`} download>pdf</a>
+          {["graphml", "json", "nodes.csv", "edges.csv"].map((f) => <AuthLink key={f} href={`/cases/${caseId}/export/graph?format=${f}`} download={`graph.${f}`}>{f}</AuthLink>)}
+          <AuthLink href={`/cases/${caseId}/report.html`}>report</AuthLink>
+          <AuthLink href={`/cases/${caseId}/report.pdf`} download="case-report.pdf">pdf</AuthLink>
         </div>
         <ErrorBox e={graph.error} />
         <div className="graph" ref={box} />
@@ -237,6 +238,48 @@ function cell(v: any): string {
   return String(v);
 }
 
+// Pick a pair of vertex labels, a relationship and a few conditions; the text of the query is produced for you and can still be
+// edited. The choices come from what the case actually holds (graph/schema), so there is nothing to type that does not exist.
+function QueryBuilder({ caseId, bump, onUse }: { caseId: string; bump: number; onUse: (q: string) => void }) {
+  const schema = useAsync(() => api<any>(`/cases/${caseId}/graph/schema`), [caseId, bump]);
+  const [from, setFrom] = useState("");
+  const [pred, setPred] = useState("");
+  const [to, setTo] = useState("");
+  const [grade, setGrade] = useState("");
+  const [minSrc, setMinSrc] = useState(0);
+  const [limit, setLimit] = useState(25);
+  const rels: any[] = schema.data?.relations ?? [];
+  const labels: any[] = schema.data?.labels ?? [];
+  const preds = [...new Set(rels.filter((r) => (!from || r.from === from) && (!to || r.to === to)).map((r) => r.predicate as string))];
+  const nothing = schema.data && !labels.length;
+  let text = "", problem = "";
+  try { text = buildCypher({ from, predicate: pred, to, worstGrade: grade, minSources: minSrc, limit }); } catch (e: any) { problem = String(e.message ?? e); }
+  const sel = (v: string, set: (s: string) => void, opts: string[], any: string) => (
+    <select value={v} onChange={(e) => set(e.target.value)}>
+      <option value="">{any}</option>
+      {opts.map((o) => <option key={o} value={o}>{o}</option>)}
+    </select>
+  );
+  return (
+    <details style={{ marginBottom: 8 }}>
+      <summary>Build a query</summary>
+      {nothing ? <div className="muted">This case has no entities yet, so there is nothing to build a query from.</div> : (
+        <div className="row" style={{ flexWrap: "wrap", gap: 8, marginTop: 6 }}>
+          <span>from {sel(from, setFrom, labels.map((l) => l.name), "any type")}</span>
+          <span>linked by {sel(pred, setPred, preds, "any relationship")}</span>
+          <span>to {sel(to, setTo, labels.map((l) => l.name), "any type")}</span>
+          <span>source grade {sel(grade, setGrade, ["A", "B", "C", "D", "E"], "any")}{grade && " or better"}</span>
+          <span>independent sources ≥ <input type="number" min={0} max={1000} value={minSrc} style={{ width: 60 }}
+            onChange={(e) => setMinSrc(Math.max(0, Number(e.target.value) || 0))} /></span>
+          <span>limit <input type="number" min={1} max={500} value={limit} style={{ width: 70 }} onChange={(e) => setLimit(Number(e.target.value) || 25)} /></span>
+          <button disabled={!!problem} onClick={() => onUse(text)} title="Puts the query below; you can edit it before running">Use this query</button>
+        </div>
+      )}
+      {!nothing && <pre className="muted" style={{ margin: "6px 0 0" }}>{problem || text}</pre>}
+    </details>
+  );
+}
+
 function CypherPanel({ caseId, bump }: { caseId: string; bump: number }) {
   const svc = useAsync(() => api<any>("/services"), [bump]);
   const [q, setQ] = useState(CYPHER_EXAMPLE);
@@ -249,6 +292,7 @@ function CypherPanel({ caseId, bump }: { caseId: string; bump: number }) {
   }
   return (
     <Card title="Cypher (read-only, Apache AGE)">
+      <QueryBuilder caseId={caseId} bump={bump} onUse={setQ} />
       <textarea rows={4} value={q} onChange={(e) => setQ(e.target.value)} style={{ width: "100%", fontFamily: "monospace" }} spellCheck={false} />
       <div className="row">
         <button disabled={busy || !q.trim()} onClick={async () => {

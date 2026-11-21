@@ -39,6 +39,9 @@ class Settings:
     monitor_sweep_seconds: int = 0         # 0 = off: scheduled monitors contact third-party sources, so they are opt-in
     oidc_issuer: str | None = None         # team profile: tokens must come from this issuer
     oidc_audience: str | None = None       # ...and name this audience
+    oidc_client_id: str | None = None      # team profile: the UI's public client id; set it to turn on browser sign-in (authorization code + PKCE)
+    oidc_scope: str = "openid profile email"
+    oidc_browser_token: str = "id_token"   # which token the browser sends as the bearer: id_token | access_token (its aud must equal oidc_audience)
     team_admins: tuple[str, ...] = ()      # OIDC subjects that receive a workspace-wide owner grant on first sight
     allowed_hosts: tuple[str, ...] = ("localhost", "127.0.0.1", "[::1]", "testserver")
 
@@ -75,6 +78,9 @@ class Settings:
             monitor_sweep_seconds=int(os.environ.get("ASTRAL_MONITOR_SWEEP_SECONDS", "0")),
             oidc_issuer=os.environ.get("ASTRAL_OIDC_ISSUER") or None,
             oidc_audience=os.environ.get("ASTRAL_OIDC_AUDIENCE") or None,
+            oidc_client_id=os.environ.get("ASTRAL_OIDC_CLIENT_ID") or None,
+            oidc_scope=os.environ.get("ASTRAL_OIDC_SCOPE", "openid profile email"),
+            oidc_browser_token=os.environ.get("ASTRAL_OIDC_BROWSER_TOKEN", "id_token"),
             team_admins=tuple(x.strip() for x in os.environ.get("ASTRAL_TEAM_ADMINS", "").split(",") if x.strip()),
             allowed_hosts=tuple(x.strip() for x in os.environ.get(
                 "ASTRAL_ALLOWED_HOSTS", "localhost,127.0.0.1,[::1],testserver").split(",") if x.strip()),

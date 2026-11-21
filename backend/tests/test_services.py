@@ -10,7 +10,6 @@ import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
-import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
@@ -41,6 +40,7 @@ def add_chunks(conn, case, bodies):
 
 
 def add_faces(conn, case, n, *, watchlist=None, seed=0, dim=16, model="sface"):
+    np = pytest.importorskip("numpy")           # optional: comes with the faces extra, not a core dependency
     rng = np.random.default_rng(seed)
     v = rng.normal(size=(n, dim))
     v /= np.linalg.norm(v, axis=1, keepdims=True)
@@ -157,6 +157,7 @@ def test_erasing_a_case_removes_its_text_from_opensearch(db, real):
 
 @needs_qd
 def test_qdrant_exact_search_matches_postgres_exactly(db, real):
+    np = pytest.importorskip("numpy")
     case = new_case(db)
     with db.connection() as conn:
         fs, v = add_faces(conn, case, 60, seed=3)

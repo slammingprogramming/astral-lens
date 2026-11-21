@@ -1,5 +1,8 @@
 # Astral Lens
 
+[![CI](https://github.com/slammingprogramming/astral-lens/actions/workflows/ci.yml/badge.svg)](https://github.com/slammingprogramming/astral-lens/actions/workflows/ci.yml)
+[![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
+
 **A self-hosted OSINT aggregation and multimodal investigation platform.**
 
 Astral Lens takes inputs of almost any shape — a photograph, a video, an audio
@@ -62,16 +65,24 @@ saved views, table import, GraphML/CSV export, HTML and PDF reports, and approve
 crypto and geospatial connectors, a plugin/pack registry with a community-repository
 format ([docs/12](docs/12-community-repository.md)), write-once (S3 Object Lock)
 preservation, optional OpenSearch and Qdrant services, and optional dense retrieval with a
-reranker (multilingual-e5-large and bge-reranker-v2-m3-int8 through fastembed). An optional Apache AGE Cypher view of the case graph, Overture (through a bounded
-Parquet range-read capability) and KartaView connectors, and dense text vectors in Qdrant are
-built too; KartaView's public endpoints were unreachable when checked. **Not built:** a
-Cypher editor in the UI, and any public community repository. OIDC and the MCP server were tested against local fixtures only, and most connectors were; a
-few keyless ones were also run once against the live services (see the roadmap's live-check
-list, which includes a bug that run found); write-once storage was run against a real
-SeaweedFS server, but without authentication; dense retrieval was checked on two queries,
-not on a real corpus; and the two bundled site packs have never been run against the real
-sites. Each roadmap status block says exactly what was and was not
+reranker (multilingual-e5-large and bge-reranker-v2-m3-int8 through fastembed).
+
+**Also built:** an optional Apache AGE Cypher view of the case graph (with a query panel in
+the Workbench), Overture Maps (through a bounded Parquet range-read capability) and KartaView
+connectors, and dense text vectors in Qdrant. KartaView's public endpoints were unreachable when
 checked.
+
+A query builder for the Cypher view and browser sign-in for the team profile (OpenID Connect,
+PKCE) are built.
+
+**Not built:** any public community repository.
+
+**What has and has not been checked.** OIDC (including the browser sign-in) and the MCP server were tested against local
+fixtures and a local fake provider only, and so were most connectors; a few keyless ones were also run once against the live
+services (see the roadmap's live-check list, which includes a bug that run found). Write-once
+storage was run against a real SeaweedFS server, but without authentication. Dense retrieval was
+checked on two queries, not on a real corpus. The two bundled site packs have never been run
+against the real sites. Each roadmap status block says exactly what was and was not checked.
 
 ```bash
 docker run -d --name astral-pg-dev -e POSTGRES_PASSWORD=astral -p 55432:5432 postgres:16-alpine

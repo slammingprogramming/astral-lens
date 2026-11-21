@@ -1,0 +1,20 @@
+name: Feature request
+description: A source, analysis or workflow Astral Lens does not have yet.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you need to do
+      description: The investigation task, not the implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: For a new data source
+      description: Its documentation URL, whether it needs a key, its licence and terms, and whether it can be run without a login. A connector is written from the documentation or a live check, never from memory.
+  - type: textarea
+    id: alt
+    attributes:
+      label: What you do today

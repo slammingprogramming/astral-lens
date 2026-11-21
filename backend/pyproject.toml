@@ -8,6 +8,17 @@ version = "0.0.1"
 description = "Astral Lens: self-hosted OSINT aggregation and multimodal investigation platform"
 requires-python = ">=3.11"
 license = "AGPL-3.0-or-later"    # ADR-0002
+authors = [{ name = "SlammingProgramming" }]
+keywords = ["osint", "investigation", "knowledge-graph", "provenance", "self-hosted", "multimodal"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Information Technology",
+  "Framework :: FastAPI",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Security",
+]
 dependencies = [
   "fastapi>=0.115",
   "uvicorn>=0.30",
@@ -26,7 +37,9 @@ dependencies = [
 #   docling  - layout-aware parsing            gliner / spacy - model NER
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "httpx>=0.27", "pypdf>=4"]
+# numpy and reportlab are here because tests exercise the dense-retrieval, face-vector and PDF-report code paths with
+# fake models; the features' own extras (dense, faces, pdf) bring them in for real use.
+dev = ["pytest>=8", "httpx>=0.27", "pypdf>=4", "numpy>=1.26", "reportlab>=4"]
 # Face detection/embedding (YuNet + SFace through OpenCV) and perceptual hashing.
 faces = ["opencv-python-headless>=4.10,<5"]
 # Write-once preservation in an S3 bucket with Object Lock.
@@ -41,6 +54,9 @@ streams = ["websockets>=14"]
 parquet = ["pyarrow>=15"]
 
 [project.urls]
+Homepage = "https://github.com/slammingprogramming/astral-lens"
+Repository = "https://github.com/slammingprogramming/astral-lens"
+Issues = "https://github.com/slammingprogramming/astral-lens/issues"
 Funding = "https://ko-fi.com/scenprogramming"
 Contact = "https://smp14.simplex.im/a#3gZ-zeHs4QrFZKLAN0o3SC_XQJXhj1eYBVTO_c0FAtg"
 

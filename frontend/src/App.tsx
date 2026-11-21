@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, post } from "./api";
+import { getToken, signOut } from "./auth";
 import { Card, ErrorBox, Scope, useAsync } from "./ui";
 import { Coverage, Evidence, Investigate, Settings } from "./viewsA";
 import { Documents, Entities, GraphView, Review, TimelineView } from "./viewsB";
@@ -53,6 +54,7 @@ export default function App() {
         ))}
         <hr style={{ borderColor: "var(--line)" }} />
         <button className="case" onClick={() => setTab("Settings")}>Sources, plugins, keys</button>
+        {getToken() && <button className="case" onClick={signOut}>Sign out</button>}
       </aside>
       <main className="main">
         <nav className="tabs">

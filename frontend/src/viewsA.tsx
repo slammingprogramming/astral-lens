@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api, post, put, sha256Hex } from "./api";
-import { Card, ErrorBox, Outcome, short, useAsync } from "./ui";
+import { authHeaders } from "./auth";
+import { Card, ErrorBox, Outcome, short, useAsync, AuthLink } from "./ui";
 import { Support } from "./support";
 
 // ------------------------------------------------------------- Investigate
@@ -147,7 +148,7 @@ export function Evidence({ caseId }: { caseId: string }) {
   const { data, error } = useAsync(() => api<any[]>(`/cases/${caseId}/artifacts`), [caseId]);
   const [verdict, setVerdict] = useState<Record<string, string>>({});
   async function verify(sha: string) {
-    const r = await fetch(`/cases/${caseId}/artifacts/${sha}`);
+    const r = await fetch(`/cases/${caseId}/artifacts/${sha}`, { headers: authHeaders() });
     const ok = (await sha256Hex(await r.arrayBuffer())) === sha;
     setVerdict((v) => ({ ...v, [sha]: ok ? "✓ bytes match their SHA-256" : "✗ MISMATCH" }));
   }
@@ -157,7 +158,7 @@ export function Evidence({ caseId }: { caseId: string }) {
       <table><thead><tr><th>sha256</th><th>type</th><th>size</th><th>acquired by / from</th><th>derived</th><th /></tr></thead><tbody>
         {(data ?? []).map((a) => (
           <tr key={a.sha256}>
-            <td className="mono"><a href={`/cases/${caseId}/artifacts/${a.sha256}`} target="_blank" rel="noreferrer" title={a.sha256}>{short(a.sha256, 16)}</a></td>
+            <td className="mono"><AuthLink href={`/cases/${caseId}/artifacts/${a.sha256}`} title={a.sha256}>{short(a.sha256, 16)}</AuthLink></td>
             <td>{a.media_type}</td><td>{a.byte_size}</td>
             <td>{a.acquired_by} <div className="muted" style={{ wordBreak: "break-all" }}>{a.acquired_from}</div></td>
             <td>{a.derivation ? `${a.derivation} ← ${short(a.parent_sha256, 10)}` : ""}</td>

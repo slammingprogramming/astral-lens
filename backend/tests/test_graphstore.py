@@ -73,6 +73,25 @@ def test_the_api_says_so_when_no_projection_is_configured(db, dsn, tmp_path):
         assert c.get("/services").json()["graph"] == {"configured": False, "fallback": "postgres"}
 
 
+def test_the_schema_for_the_query_builder_comes_from_postgres_and_needs_no_graph_server(db, dsn, tmp_path):
+    app = create_app(Settings(dsn=dsn, data_dir=tmp_path), db=db)
+    with TestClient(app, headers={"x-astral-client": "1"}) as c:
+        case = c.post("/cases", json={"name": "schema"}).json()["id"]
+        empty = c.get(f"/cases/{case}/graph/schema").json()
+        assert empty["labels"] == [] and empty["relations"] == [] and empty["projection_configured"] is False
+        assert c.post(f"/cases/{case}/import/table", json={"csv_text": CSV, "mapping": MAP}).status_code == 201
+        s = c.get(f"/cases/{case}/graph/schema").json()
+        names = {x["name"]: x["count"] for x in s["labels"]}
+        assert names["Person"] == 3 and names["Company"] == 2
+        rel = {(r["from"], r["predicate"], r["to"]): r["count"] for r in s["relations"]}
+        assert rel[("Person", "employer", "Company")] == 3
+        assert s["vertices"] == sum(names.values()) and s["edges"] == sum(rel.values())
+        # every name it offers is one the query checker accepts as a label
+        assert all(graphstore.LABEL.match(x["name"]) for x in s["labels"]) and all(graphstore.LABEL.match(r["predicate"]) for r in s["relations"])
+        # unknown case: the same refusal as every other case-scoped read
+        assert c.get(f"/cases/{uuid.uuid4()}/graph/schema").status_code in (403, 404)
+
+
 # ------------------------------------------------------------------ against a real AGE server
 @pytest.fixture()
 def rig(db, dsn, tmp_path):

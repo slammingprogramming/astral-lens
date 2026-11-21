@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api, post } from "./api";
-import { Card, ErrorBox, short, useAsync } from "./ui";
+import { Card, ErrorBox, short, useAsync, AuthLink } from "./ui";
 
 async function uploadImage(caseId: string, f: File): Promise<string> {
   const up = await api(`/cases/${caseId}/artifacts`, {
@@ -68,7 +68,7 @@ export function FacesView({ caseId, bump, onChanged }: { caseId: string; bump: n
                   <td><b>{c.score.toFixed(3)}</b>
                     <div className="muted" title="OpenCV's published SFace operating point on the LFW benchmark. It does not transfer to poor-quality images.">
                       {c.above_reference ? "above" : "below"} reference {c.reference_threshold}</div></td>
-                  <td>{c.watchlist ? <span className="badge">watchlist: {c.label}</span> : <a href={`/cases/${caseId}/artifacts/${c.artifact}`} target="_blank" rel="noreferrer" className="mono">{short(c.artifact, 12)}</a>}
+                  <td>{c.watchlist ? <span className="badge">watchlist: {c.label}</span> : <AuthLink href={`/cases/${caseId}/artifacts/${c.artifact}`} className="mono">{short(c.artifact, 12)}</AuthLink>}
                     {c.frame_ms != null && <span className="muted"> @{Math.round(c.frame_ms / 1000)}s</span>}</td>
                   <td className="muted">{c.backend} · detector score {c.det_score}</td>
                 </tr>

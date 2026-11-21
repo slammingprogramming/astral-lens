@@ -41,7 +41,9 @@ class Idp:
         self.rsa = rsa.generate_private_key(65537, 2048)
         self.ec = ec.generate_private_key(ec.SECP256R1())
         self.keys = [jwk_rsa(self.rsa, "r1"), jwk_ec(self.ec, "e1")]
-        server.add("/.well-known/openid-configuration", {"issuer": server.url, "jwks_uri": server.url + "/jwks"})
+        server.add("/.well-known/openid-configuration", {"issuer": server.url, "jwks_uri": server.url + "/jwks",
+                                                         "authorization_endpoint": server.url + "/authorize", "token_endpoint": server.url + "/token",
+                                                         "code_challenge_methods_supported": ["S256"]})
         server.add_fn("/jwks", lambda req: (200, "application/json", {"keys": self.keys}, {}))
         self.issuer = server.url
 
@@ -244,6 +246,53 @@ def test_comments_cannot_be_edited_or_deleted(team, db):
     with db.connection() as conn:
         with pytest.raises(psycopg.errors.IntegrityConstraintViolation):
             conn.execute("UPDATE comment SET body='rewritten' WHERE case_id=%s", (case,))
+
+
+# ------------------------------------------------------------------ browser sign-in: what the UI is told
+def test_auth_config_is_public_and_says_nothing_secret(idp, db, dsn, tmp_path):
+    app = create_app(team_settings(idp, dsn, tmp_path, oidc_client_id="astral-ui"), db=db)
+    with TestClient(app, headers={"x-astral-client": "1"}) as c:
+        r = c.get("/auth/config")                                            # no token: it is read before there is one
+        assert r.status_code == 200
+        assert r.json() == {"enabled": True, "issuer": idp.issuer, "browser_login": True, "client_id": "astral-ui",
+                            "authorization_endpoint": idp.issuer + "/authorize", "token_endpoint": idp.issuer + "/token",
+                            "scope": "openid profile email", "token_use": "id_token"}
+        assert c.get("/cases").status_code == 401                            # and nothing else became public
+
+
+def test_auth_config_without_a_client_id_offers_no_browser_login(team, idp):
+    assert team.get("/auth/config").json() == {"enabled": True, "issuer": idp.issuer, "browser_login": False}
+
+
+def test_auth_config_in_the_solo_profile_says_there_is_no_sign_in(db, dsn, tmp_path):
+    app = create_app(Settings(dsn=dsn, data_dir=tmp_path / "solo2"), db=db)
+    with TestClient(app, headers={"x-astral-client": "1"}) as c:
+        assert c.get("/auth/config").json() == {"enabled": False}
+
+
+@pytest.mark.parametrize("doc,why", [
+    ({"authorization_endpoint": "http://idp.example.com/a", "token_endpoint": "https://idp.example.com/t"}, "authorization_endpoint"),
+    ({"authorization_endpoint": "https://idp.example.com/a", "token_endpoint": "ftp://idp.example.com/t"}, "token_endpoint"),
+    ({"authorization_endpoint": "https://idp.example.com/a"}, "token_endpoint"),
+    ({"authorization_endpoint": "https://idp.example.com/a", "token_endpoint": "https://idp.example.com/t",
+      "code_challenge_methods_supported": ["plain"]}, "PKCE"),
+])
+def test_discovery_refuses_endpoints_it_should_not_send_a_browser_to(server, doc, why):
+    server.routes.clear()
+    server.add("/.well-known/openid-configuration", {"issuer": server.url, "jwks_uri": server.url + "/jwks", **doc})
+    with pytest.raises(oidc.OidcError, match=why):
+        oidc.OidcValidator(server.url, AUD).discovery()
+
+
+def test_a_bad_discovery_document_is_a_503_not_a_leak_and_a_wrong_token_setting_stops_startup(idp, db, dsn, tmp_path, server):
+    server.routes.clear()
+    server.add("/.well-known/openid-configuration", {"issuer": "https://someone-else.example", "jwks_uri": server.url + "/jwks"})
+    app = create_app(team_settings(idp, dsn, tmp_path, oidc_client_id="astral-ui"), db=db)
+    with TestClient(app, headers={"x-astral-client": "1"}) as c:
+        r = c.get("/auth/config")
+        assert r.status_code == 503 and "someone-else" not in r.text
+    with pytest.raises(RuntimeError, match="ASTRAL_OIDC_BROWSER_TOKEN"):
+        create_app(team_settings(idp, dsn, tmp_path, oidc_browser_token="session_cookie"), db=db)
 
 
 def test_solo_profile_still_works_exactly_as_before(db, dsn, tmp_path):

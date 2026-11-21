@@ -1,7 +1,7 @@
 import cytoscape from "cytoscape";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, post } from "./api";
-import { Card, ErrorBox, Grade, Scope, short, useAsync } from "./ui";
+import { Card, ErrorBox, Grade, Scope, short, useAsync, AuthLink } from "./ui";
 import { fmtMs } from "./viewsC";
 
 const SCHEMA_COLOR: Record<string, string> = {
@@ -126,7 +126,7 @@ export function Explain({ ex, caseId }: { ex: any; caseId: string }) {
       {t.derived_by.degraded && <span className="badge"> degraded from {t.derived_by.degraded_from}</span>}
       {t.derived_by.kind === "model" && <span className="badge"> model-extracted</span>}
       {(t.artifacts ?? []).map((a: any) => (
-        <div key={a.sha256}>evidence: <a href={`/cases/${caseId}/artifacts/${a.sha256}`} target="_blank" rel="noreferrer" className="mono">{short(a.sha256, 14)}</a>
+        <div key={a.sha256}>evidence: <AuthLink href={`/cases/${caseId}/artifacts/${a.sha256}`} className="mono">{short(a.sha256, 14)}</AuthLink>
           {" "}{a.media_type} — acquired by {a.acquisitions?.[0]?.acquired_by}
           <div className="muted" style={{ wordBreak: "break-all" }}>{a.acquisitions?.[0]?.acquired_from}</div></div>
       ))}

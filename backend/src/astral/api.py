@@ -295,6 +295,8 @@ def create_app(settings: Settings | None = None, db: Database | None = None) -> 
         from astral.oidc import OidcValidator
 
         validator = OidcValidator(settings.oidc_issuer, settings.oidc_audience)
+        if settings.oidc_browser_token not in ("id_token", "access_token"):
+            raise RuntimeError("ASTRAL_OIDC_BROWSER_TOKEN must be id_token or access_token")
     policy = TeamPolicy() if team else SoloPolicy()
     current_actor: contextvars.ContextVar = contextvars.ContextVar("astral_actor", default=None)
 
@@ -405,7 +407,7 @@ def create_app(settings: Settings | None = None, db: Database | None = None) -> 
     @app.middleware("http")
     async def authenticate(request: Request, call_next):
         path = request.url.path
-        if not team or path == "/health" or path == "/" or path.startswith("/ui"):
+        if not team or path in ("/health", "/", "/auth/config") or path.startswith("/ui"):
             return await call_next(request)
         header = request.headers.get("authorization", "")
         if not header.lower().startswith("bearer "):
@@ -432,6 +434,23 @@ def create_app(settings: Settings | None = None, db: Database | None = None) -> 
             return await call_next(request)
         finally:
             current_actor.reset(tok)
+
+    @app.get("/auth/config")
+    def auth_config() -> dict[str, Any]:
+        """What the browser needs to sign in. Public by necessity (it is read before there is a token) and holds nothing
+        secret: the issuer, a public client id and the provider's own endpoints. The UI does the authorization-code + PKCE
+        exchange itself; this API never sees a code, a verifier or a password."""
+        if not team:
+            return {"enabled": False}
+        out: dict[str, Any] = {"enabled": True, "issuer": validator.issuer, "browser_login": bool(settings.oidc_client_id)}
+        if not settings.oidc_client_id:
+            return out
+        try:
+            doc = validator.discovery()
+        except Exception as e:                                     # noqa: BLE001 - provider unreachable or wrong
+            raise HTTPException(503, "identity provider unavailable or its discovery document is not acceptable") from e
+        return {**out, "client_id": settings.oidc_client_id, "authorization_endpoint": doc["authorization_endpoint"],
+                "token_endpoint": doc["token_endpoint"], "scope": settings.oidc_scope, "token_use": settings.oidc_browser_token}
 
     # The built UI (frontend/dist), when present. The API works without it.
     ui_dir = Path(os.environ.get("ASTRAL_UI_DIR") or Path(__file__).resolve().parents[3] / "frontend" / "dist")
@@ -859,6 +878,15 @@ def create_app(settings: Settings | None = None, db: Database | None = None) -> 
 
             retrieval.ensure_indexed(conn, app.state.store, actor, case_id)
             return app.state.services.sync_case(conn, case_id)
+
+    @app.get("/cases/{case_id}/graph/schema")
+    def graph_schema(case_id: uuid.UUID) -> dict[str, Any]:
+        """The vertex labels and edge labels a Cypher query over this case can use (read from Postgres; no graph server needed)."""
+        from astral import graphstore
+
+        with app.state.db.connection() as conn:
+            _read(conn, case_id, "entity.read")
+            return {**graphstore.schema(conn, case_id), "projection_configured": app.state.services.graph is not None}
 
     @app.post("/cases/{case_id}/graph/cypher")
     def graph_cypher(case_id: uuid.UUID, body: CypherBody) -> dict[str, Any]:

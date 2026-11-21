@@ -263,6 +263,31 @@ def sync(conn: psycopg.Connection, svc: GraphService, case_id: uuid.UUID, *, for
     return {"rebuilt": True, **out}
 
 
+def schema(conn: psycopg.Connection, case_id: uuid.UUID) -> dict[str, Any]:
+    """What a Cypher query over this case can mention: the vertex labels, and which edge label links which pair of
+    vertex labels, with counts. Read from Postgres with the same naming and skipping rules as `GraphService.project`,
+    so it needs no graph server and cannot disagree with what a projection would hold. Feeds the query builder."""
+    graph = views.build_graph(conn, case_id, include_documents=True)
+    label_of: dict[str, str] = {}
+    labels: dict[str, int] = {}
+    for n in graph["nodes"]:
+        if not UUID.match(str(n["id"])):
+            continue
+        lab = _label(n.get("schema"), "Entity")
+        label_of[n["id"]] = lab
+        labels[lab] = labels.get(lab, 0) + 1
+    rels: dict[tuple[str, str, str], int] = {}
+    for e in graph["edges"]:
+        s, t = label_of.get(e["source"]), label_of.get(e["target"])
+        if not s or not t or not EDGE_ID.match(str(e["id"])) or not re.fullmatch(r"[a-z]{1,20}", str(e.get("kind") or "")):
+            continue
+        key = (s, _label(e.get("label"), "LINK"), t)
+        rels[key] = rels.get(key, 0) + 1
+    return {"labels": [{"name": k, "count": v} for k, v in sorted(labels.items())],
+            "relations": [{"from": s, "predicate": p, "to": t, "count": n} for (s, p, t), n in sorted(rels.items())],
+            "vertices": sum(labels.values()), "edges": sum(rels.values())}
+
+
 def hydrate(conn: psycopg.Connection, case_id: uuid.UUID, result: dict[str, Any]) -> dict[str, Any]:
     """Replace graph vertices/edges/paths in a result with what Postgres holds now; mark any it no longer holds."""
     ids: set[str] = set()

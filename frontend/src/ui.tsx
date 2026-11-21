@@ -1,4 +1,24 @@
 import { ReactNode, useEffect, useState } from "react";
+import { openWithAuth } from "./api";
+import { getToken } from "./auth";
+
+/** A link to something the API serves. A browser cannot add the bearer token to a plain link, so when someone is signed in
+ *  (team profile) the file is fetched with the token and opened or saved; otherwise it is an ordinary link. */
+export function AuthLink({ href, download, className, title, children }: { href: string; download?: string; className?: string; title?: string; children: ReactNode }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <>
+      <a href={href} download={download} className={className} title={title} target={download ? undefined : "_blank"} rel="noreferrer"
+        onClick={(e) => {
+          if (!getToken()) return;
+          e.preventDefault();
+          setFailed(false);
+          openWithAuth(href, download).catch(() => setFailed(true));
+        }}>{children}</a>
+      {failed && <span className="badge" title="The server refused or could not serve this file"> failed</span>}
+    </>
+  );
+}
 
 export function Grade({ s, i }: { s: string; i: number }) {
   // Admiralty: source reliability A-F, information credibility 1-6. Weak = worse than C3.

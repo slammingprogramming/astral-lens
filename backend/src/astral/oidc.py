@@ -1,10 +1,12 @@
 """OIDC bearer-token validation for the team profile (10 §9).
 
 This makes the API a *resource server*: it accepts an ID/access token issued by the
-operator's identity provider, checks it, and maps the subject to a principal. It does
-NOT implement the browser login flow (authorization-code + PKCE, sessions, logout):
-put the UI behind a proxy that does (oauth2-proxy and similar) or have clients obtain
-tokens themselves.
+operator's identity provider, checks it, and maps the subject to a principal. The API
+itself holds no sessions and never sees a password or a code. The browser UI signs in as
+a public client (authorization code + PKCE, run entirely in the browser) when
+ASTRAL_OIDC_CLIENT_ID is set: `discovery()` below is what GET /auth/config serves it from.
+Without that, put the UI behind a proxy that signs users in (oauth2-proxy and similar) or
+have clients obtain tokens themselves.
 
 Checks: the token is a JWS with a `kid` the provider's JWKS contains; `alg` is RS256 or
 ES256 (never `none`, never an HMAC, so a public key cannot be abused as a secret);
@@ -48,6 +50,11 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def _endpoint_ok(url: str) -> bool:
+    u = urllib.parse.urlparse(url)
+    return u.scheme == "https" or (u.scheme == "http" and u.hostname in _LOCAL)
+
+
 def _default_get(url: str) -> bytes:
     handlers: list[Any] = [_NoRedirect()]
     if urllib.parse.urlparse(url).hostname in _LOCAL:
@@ -79,9 +86,26 @@ class OidcValidator:
         self._keys: dict[str, dict[str, Any]] = {}
         self._fetched = 0.0
         self._jwks_uri: str | None = None
-        u = urllib.parse.urlparse(self.issuer)
-        if u.scheme != "https" and not (u.scheme == "http" and u.hostname in _LOCAL):
+        self._doc: dict[str, Any] | None = None
+        if not _endpoint_ok(self.issuer):
             raise OidcError("the issuer must be https (http is allowed only for localhost development)")
+
+    # ------------------------------------------------------- discovery (for the browser sign-in)
+    def discovery(self) -> dict[str, Any]:
+        """The provider's discovery document, checked: it names this issuer, offers an authorization and a token endpoint
+        that are https (or local, for development), and, if it lists code-challenge methods, includes S256."""
+        if self._doc is None:
+            doc = json.loads(self._get(f"{self.issuer}/.well-known/openid-configuration"))
+            if not isinstance(doc, dict) or str(doc.get("issuer", "")).rstrip("/") != self.issuer:
+                raise OidcError("discovery document names a different issuer")
+            for k in ("authorization_endpoint", "token_endpoint"):
+                if not isinstance(doc.get(k), str) or not _endpoint_ok(doc[k]):
+                    raise OidcError(f"discovery document has no usable {k}")
+            methods = doc.get("code_challenge_methods_supported")
+            if methods is not None and "S256" not in methods:
+                raise OidcError("the provider does not support PKCE with S256")
+            self._doc = doc
+        return self._doc
 
     # --------------------------------------------------------------- keys
     def _load_keys(self) -> None:

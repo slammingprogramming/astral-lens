@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { api } from "./api";
-import { Card, ErrorBox, Grade, short, useAsync } from "./ui";
+import { Card, ErrorBox, Grade, short, useAsync, AuthLink } from "./ui";
 
 export const fmtMs = (ms: number | null | undefined) => {
   if (ms == null) return "";
@@ -71,7 +71,7 @@ function Detail({ caseId, sha }: { caseId: string; sha: string }) {
       {d.transcript?.translations?.length > 0 && (
         <Card title="Translations (machine)">
           {d.transcript.translations.map((t: any) => (
-            <div key={t.text_sha}><a href={`/cases/${caseId}/artifacts/${t.text_sha}`} target="_blank" rel="noreferrer">{t.language}</a>
+            <div key={t.text_sha}><AuthLink href={`/cases/${caseId}/artifacts/${t.text_sha}`}>{t.language}</AuthLink>
               <span className="muted"> · machine output, read the original</span></div>
           ))}
         </Card>

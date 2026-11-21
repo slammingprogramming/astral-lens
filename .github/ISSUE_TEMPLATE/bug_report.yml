@@ -1,0 +1,39 @@
+name: Bug report
+description: Something does not work, or reports a result it should not.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not paste case data, evidence, names, keys or tokens.** Astral Lens never needs them to diagnose a
+        problem. For a security problem, do not open an issue: see [SECURITY.md](https://github.com/slammingprogramming/astral-lens/blob/main/SECURITY.md).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Synthetic data or a public example is best.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: "`astral-lens` version from `backend/pyproject.toml`, or the commit."
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: Output of `astral preflight` (profile, which backends are installed), your OS, Python and Postgres versions.
+      render: text
+  - type: checkboxes
+    id: invariants
+    attributes:
+      label: Does it break a design invariant?
+      description: See [docs/13-design-invariants.md](https://github.com/slammingprogramming/astral-lens/blob/main/docs/13-design-invariants.md). For example, an unreachable source reported as "no results", or a silent fallback.
+      options:
+        - label: It reports unknown as negative, hides a degraded backend, or writes something the AI layer must not.
