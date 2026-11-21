@@ -49,7 +49,13 @@ export function getToken(): string | null {
   } catch { return null; }
 }
 
-export const authHeaders = (): Record<string, string> => { const t = getToken(); return t ? { Authorization: `Bearer ${t}` } : {}; };
+/** True when this tab signed in earlier and the token has since expired (or is about to): the next request would go out
+ *  unauthenticated, so the caller sends the person back to the sign-in prompt instead of failing silently. */
+export function sessionExpired(): boolean {
+  return store.get(TOKEN) !== null && getToken() === null;
+}
+
+export const authHeaders =(): Record<string, string> => { const t = getToken(); return t ? { Authorization: `Bearer ${t}` } : {}; };
 
 export function dropToken(): void { store.del(TOKEN); }
 

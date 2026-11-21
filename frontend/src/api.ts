@@ -1,14 +1,23 @@
 // Thin fetch wrapper. Every state-changing request carries X-Astral-Client: the
 // solo API refuses anything without it (CSRF guard, backend/src/astral/api.py).
 
-import { authHeaders, dropToken, getToken } from "./auth";
+import { authHeaders, dropToken, getToken, sessionExpired } from "./auth";
 
-/** A 401 while signed in means the token expired or was refused: drop it and start again at the sign-in prompt. */
+/** Back to the sign-in prompt (one click when the identity provider's own session is still alive). */
+function backToSignIn(): never {
+  dropToken();
+  location.reload();
+  throw new ApiError(401, "Your sign-in has expired; sign in again.");
+}
+
+/** A token that has expired would send the request without credentials and fail silently: refuse to send it. */
+export function checkSession(): void {
+  if (sessionExpired()) backToSignIn();
+}
+
+/** A 401 while signed in (or after the token ran out) means it expired or was refused: start again at the sign-in prompt. */
 function unauthorized(status: number): void {
-  if (status === 401 && getToken()) {
-    dropToken();
-    location.reload();
-  }
+  if (status === 401 && (getToken() || sessionExpired())) backToSignIn();
 }
 
 export class ApiError extends Error {
@@ -18,6 +27,7 @@ export class ApiError extends Error {
 }
 
 export async function api<T = any>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
+  checkSession();
   const headers: Record<string, string> = { "X-Astral-Client": "ui", ...authHeaders(), ...(init.headers as Record<string, string>) };
   let body = init.body;
   if (init.json !== undefined) {
@@ -42,6 +52,7 @@ export async function api<T = any>(path: string, init: RequestInit & { json?: un
 /** Fetch a file the API serves (an artifact, an export, a report) with the bearer token, for a link a browser cannot add a header to.
  *  `download` saves it under that name; otherwise it opens in a new tab. */
 export async function openWithAuth(path: string, download?: string): Promise<void> {
+  checkSession();
   const r = await fetch(path, { headers: { "X-Astral-Client": "ui", ...authHeaders() } });
   if (!r.ok) {
     unauthorized(r.status);
@@ -70,6 +81,7 @@ function detailOf(data: any, fallback: string): string {
 
 /** POST and keep the response as a file (the exhibit export). */
 export async function postForFile(path: string, json: unknown): Promise<{ blob: Blob; name: string; sha256: string | null }> {
+  checkSession();
   const r = await fetch(path, { method: "POST", headers: { "X-Astral-Client": "ui", ...authHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(json) });
   if (!r.ok) {
     unauthorized(r.status);

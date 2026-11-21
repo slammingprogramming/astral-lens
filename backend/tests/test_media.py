@@ -229,7 +229,7 @@ def test_video_to_timecoded_dossier(client, tmp_path):
     sha = upload(client, case, vid.read_bytes(), "video/mp4")
     rep = client.post(f"/cases/{case}/artifacts/{sha}/ingest").json()
     assert rep["kind"] == "video"
-    assert {k: v["status"] for k, v in rep["steps"].items() if k != "faces"} == {
+    assert {k: v["status"] for k, v in rep["steps"].items() if k not in ("faces", "tracks")} == {
         "probe": "ok", "transcribe": "partial", "extract": "ok", "scenes": "ok"}   # partial: speakers unknown
     assert asr.calls == 1
 

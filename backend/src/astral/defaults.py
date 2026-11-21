@@ -15,6 +15,8 @@ from astral.docparse import BuiltinParser, DoclingParser, TikaParser
 from astral.faces import register_face_backends
 from astral.mediamodels import register_media_backends
 from astral.ner import GlinerNer, RulesNer, SpacyNer
+from astral.geo import register_geo_backends
+from astral.objects import register_object_backends
 
 
 def default_backends(tika_url: str | None = None) -> BackendRegistry:
@@ -29,6 +31,8 @@ def default_backends(tika_url: str | None = None) -> BackendRegistry:
     reg.register(RulesNer())
     register_media_backends(reg)
     register_face_backends(reg)
+    register_object_backends(reg)
+    register_geo_backends(reg)
     return reg
 
 
@@ -261,6 +265,56 @@ def _face_index(ctx: CallContext, args: dict[str, Any]) -> dict[str, Any]:
     return {"indexed": n}
 
 
+# -------------------------------------------------------------------- objects
+def _object_backend(ctx: CallContext, args: dict[str, Any]):
+    try:
+        return ctx.host.backends.resolve("object.detect", prefer=args.get("prefer"))
+    except NoBackend as e:
+        raise CapabilityError(str(e)) from e
+
+
+def _object_detect(ctx: CallContext, args: dict[str, Any]) -> dict[str, Any]:
+    res = _object_backend(ctx, args)
+    path = _media_path(ctx, args["sha256"])
+    try:
+        out = res.backend.run(data=path.read_bytes(), min_score=float(args.get("min_score", 0.4)),
+                              max_objects=int(args.get("max_objects", 100)))
+    except Exception as e:                           # noqa: BLE001 - undecodable image, model failure
+        raise CapabilityError(f"{res.backend.name} failed: {type(e).__name__}: {e}") from e
+    return {**out, "backend": _backend_info(res), "model_id": res.backend.model_id, "licence": _licence_of(res.backend.model_id)}
+
+
+def _object_track(ctx: CallContext, args: dict[str, Any]) -> dict[str, Any]:
+    from astral import objects, tracking
+
+    res = _object_backend(ctx, args)
+    src = _media_path(ctx, args["sha256"])
+    try:
+        out = objects.track_video(src, res.backend, fps=float(args.get("fps", 4.0)), max_frames=int(args.get("max_frames", 600)),
+                                  min_score=float(args.get("min_score", 0.3)), tracker=tracking.Tracker())
+    except Exception as e:                           # noqa: BLE001 - unreadable video, model failure
+        raise CapabilityError(f"{res.backend.name} failed: {type(e).__name__}: {e}") from e
+    return {**out, "backend": _backend_info(res), "model_id": res.backend.model_id, "licence": _licence_of(res.backend.model_id)}
+
+
+def _geo_region(ctx: CallContext, args: dict[str, Any]) -> dict[str, Any]:
+    try:
+        res = ctx.host.backends.resolve("geo.region", prefer=args.get("prefer"),
+                                        allow_unverified_licence=bool(args.get("allow_unverified_licence")))
+    except NoBackend as e:
+        hint = "" if args.get("allow_unverified_licence") else (
+            " (this model's licence is unverified, so it runs only when the caller sets allow_unverified_licence)")
+        raise CapabilityError(f"{e}{hint}") from e
+    path = _media_path(ctx, args["sha256"])
+    try:
+        out = res.backend.run(data=path.read_bytes(), top_k=int(args.get("top_k", 100)),
+                              cell_degrees=float(args.get("cell_degrees", 5.0)), max_regions=int(args.get("max_regions", 5)))
+    except Exception as e:                           # noqa: BLE001 - undecodable image, model failure
+        raise CapabilityError(f"{res.backend.name} failed: {type(e).__name__}: {e}") from e
+    return {**out, "backend": _backend_info(res), "model_id": res.backend.model_id,
+            "licences": {"geoclip": _licence_of("geoclip"), "backbone": _licence_of("clip-vit-large-patch14")}}
+
+
 def _image_hash(ctx: CallContext, args: dict[str, Any]) -> dict[str, Any]:
     from astral import pdq
     from astral.backends import module_available
@@ -283,6 +337,9 @@ def register_extras(caps: Capabilities) -> None:
     caps.register("face.embed", _face_embed)
     caps.register("face.index", _face_index)
     caps.register("image.hash", _image_hash)
+    caps.register("object.detect", _object_detect)
+    caps.register("object.track", _object_track)
+    caps.register("geo.region", _geo_region)
     caps.register("text.extract", _text_extract)
     caps.register("ner.extract", _ner_extract)
     caps.register("web.capture", _web_capture)

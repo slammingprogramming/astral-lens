@@ -115,7 +115,7 @@ Run both: hash first (cheap, exact), embeddings second (expensive, semantic).
 
 | Model | Licence | Reality |
 |---|---|---|
-| **GeoCLIP** | MIT (code and weights) | The only licence-clean option. 100k-coordinate gallery |
+| **GeoCLIP** | Code MIT; **weights' licence not stated**, trained on a Flickr-derived set (MP-16) of mixed licences; built on OpenAI CLIP ViT-L/14, whose Hugging Face card states no licence and calls any deployed use out of scope | The only open option that was usable, but **not licence-clean as an earlier version of this table said** (that claim was not checked). Registered as `unknown`, off by default, run only on a knowing opt-in. 100k-coordinate gallery. Built as `geo.py` and `plugins/core/geolocate` |
 | StreetCLIP | **CC-BY-NC-4.0** | Non-commercial. IM2GPS3K unseen-country 52.79% vs CLIP 41.51% |
 | PIGEON / PIGEOTTO | Weights, geocells and datasets **withheld for dual-use reasons** | Not usable |
 
@@ -123,6 +123,12 @@ Run both: hash first (cheap, exact), embeddings second (expensive, semantic).
 claims, and a 2025 PETS study found CLIP-based models weaker than large VLMs in
 complex urban and unfamiliar rural scenes. Output is a ranked region
 hypothesis, graded accordingly — never a coordinate presented as a location.
+
+The built step pools the model's top 100 predictions into 5-degree grid cells (about 550 km) and records the best five as
+`GeoRegionGuess` entities: bounds and the model's share, at information grade 5, with no coordinate stored. The share is
+softmax mass, not a calibrated probability. A diffuse answer (the best cell holds under 40% of what the model returned) is
+flagged. The model never downloads anything at run time: the CLIP backbone must be on disk (`ASTRAL_GEOCLIP_CLIP_DIR`).
+It does not read EXIF GPS; that is recorded separately as a claim by the file and the two are not merged.
 
 ### Image forensics
 
@@ -203,11 +209,32 @@ per-frame analysis → track association → timeline assembly.
 
 | Component | Choice | Licence | Why |
 |---|---|---|---|
-| Detection | **RT-DETRv2-S/M** | Apache-2.0 | S: 20M params, 48.1 AP, 217 FPS T4 fp16. The clean alternative to AGPL YOLO |
+| Detection | **RT-DETR** (r18vd built; v2 S/M are the planned larger options) | Apache-2.0 | S: 20M params, 48.1 AP, 217 FPS T4 fp16. The clean alternative to AGPL YOLO. **Built:** `objects.py`, the r18vd variant through ONNX Runtime on the CPU, 80 COCO classes (see §3.1) |
 | Open-vocabulary | Grounding DINO Swin-T | Apache-2.0 | ~700 MB fp32; 1.5/1.6 are paid API only |
 | Segmentation | SAM 2.1 Hiera-Tiny | Apache-2.0 | 38.9M params, 91 FPS A100; 1024x1024 input so activations dominate; GPU only |
-| Tracking | **ByteTrack** | MIT | Motion-only, no ReID, 29.6 FPS MOT17 — the cheap default |
+| Tracking | **ByteTrack** | MIT | Motion-only, no ReID, 29.6 FPS MOT17 — the cheap default. **Built:** `tracking.py`, written out here rather than imported (see §3.1) |
 | Tracking (hard) | BoT-SORT-ReID | MIT | +2 HOTA under occlusion/camera motion at ~5x the cost (4.5 FPS) |
+
+### 3.1 What the object and track steps record
+
+`plugins/core/objects` (an image) and `plugins/core/video-tracks` (a video, sampled at 4 frames a second by default, at most
+600 frames) call the `object.detect` and `object.track` capabilities. What they write, and what they do not:
+
+- **A detection is a box and a class guess** from a fixed 80-class vocabulary (person, car, backpack, ...), with the model's
+  confidence. Nothing outside the vocabulary can be reported (a drone, a uniform, a weapon type are not classes). Zero
+  detections is recorded as "none detected at this threshold", never as "nothing there".
+- **A `person` box is a region, not an identity.** No face is read and no embedding is made by these steps; the face
+  pipeline (§1) is separate and carries its own retention and audit controls.
+- **A track groups boxes, not identities.** Detections of one class that overlap from one sampled frame to the next are
+  linked (Kalman prediction, Hungarian matching on overlap; the weak detections are used only to keep an existing track
+  alive). Crossing paths can swap or split tracks, nothing is re-identified after a gap of more than five sampled frames,
+  and a track's start and end are the first and last *sampled* frame in which it was seen. Track boxes are in the pixels of
+  the sampled frames (at most 960 px wide), not of the original video.
+- **A video longer than the frame cap is not scanned past it**, and the coverage entry says so.
+- The model is the licence-checked row `rt-detr-r18vd` in the registry (Apache-2.0, trained on COCO 2017); the file's hash
+  is recorded there. It is run on the CPU; no GPU path is built.
+
+Grades: the class label and the track path are grade 4 (a model's guess); boxes, scores and times are grade 3.
 
 ### Vision-language models under 8 GB
 

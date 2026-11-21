@@ -131,8 +131,8 @@ def ingest_media(
     *, config: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Describe a media file, then do what its kind allows: transcribe speech and
-    find entities in it, cut video into scenes with keyframes, or read text off a
-    still. Each step is a plugin, so each is graded and retractable. A plugin that
+    find entities in it, cut video into scenes with keyframes and follow detected
+    objects through it, or read text and find objects in a still. Each step is a plugin, so each is graded and retractable. A plugin that
     is not installed, or a step that fails, is reported as skipped/error with its
     reason; the others still run."""
     config = config or {}
@@ -172,8 +172,10 @@ def ingest_media(
                     agg["coverage"] = agg["coverage"] or r.coverage
             if agg:
                 steps["faces"] = {**agg, "stats": {"faces": agg["faces"], "keyframes_scanned": agg["frames"]}}
+        run("tracks", "core.video-tracks", {"artifact": sha256})
     if kind == "image":
         run("faces", "core.faces", {"artifact": sha256})
+        run("objects", "core.objects", {"artifact": sha256})
         oc = run("ocr", "core.ocr", {"artifact": sha256})
         if oc and "text_artifact" in oc.stats:
             run("extract", "core.ner", {"artifact": sha256, "text_artifact": oc.stats["text_artifact"]})

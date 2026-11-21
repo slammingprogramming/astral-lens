@@ -115,6 +115,7 @@ breaking one is a design regression, not a local bug.
 | [10 — Security & Audit](docs/10-security-and-audit.md) | Tenancy, RBAC, audit log, evidence integrity |
 | [11 — Roadmap](docs/11-roadmap.md) | Phased delivery plan |
 | [13 — Design Invariants](docs/13-design-invariants.md) | The numbered rules the source and documents cite |
+| [14 — Configuration](docs/14-configuration.md) | Every environment variable, and team sign-in setup |
 | [adr/](docs/adr/) | Architecture decision records |
 
 ## Contact and support the project

@@ -1,0 +1,33 @@
+api_version: "astral.plugin/v1"
+id: "core.objects"
+version: "1.0.0"
+title: "Object detection (80 everyday classes)"
+
+stage: extract
+direction: internal
+footprint: none
+
+consumes:
+  - type: Image
+    required: [artifact]
+produces:
+  - ObjectRegion
+
+capabilities: [object.detect]
+
+config:
+  type: object
+  properties:
+    min_score: { type: number, minimum: 0.2, maximum: 0.99, default: 0.5 }
+    max_objects: { type: integer, minimum: 1, maximum: 300, default: 100 }
+    prefer: { type: [string, "null"], default: null }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+resources: { accelerator: cpu_only, ram_mb: 1024 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "none (local computation; the model's licence is in the model registry and recorded per assertion)"
+  commercial_use: true

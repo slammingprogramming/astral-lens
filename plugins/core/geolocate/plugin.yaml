@@ -1,0 +1,35 @@
+api_version: "astral.plugin/v1"
+id: "core.geolocate"
+version: "1.0.0"
+title: "Region guess from appearance (GeoCLIP)"
+
+stage: extract
+direction: internal
+footprint: none
+
+consumes:
+  - type: Image
+    required: [artifact]
+produces:
+  - GeoRegionGuess
+
+capabilities: [geo.region]
+
+config:
+  type: object
+  properties:
+    allow_unverified_licence: { type: boolean, default: false, description: "knowing opt-in: the model's weights have no stated licence" }
+    top_k: { type: integer, minimum: 10, maximum: 1000, default: 100 }
+    cell_degrees: { type: number, minimum: 1, maximum: 20, default: 5 }
+    max_regions: { type: integer, minimum: 1, maximum: 10, default: 5 }
+    prefer: { type: [string, "null"], default: null }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+resources: { accelerator: cpu_only, ram_mb: 4096 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "none (local computation; the models' licences are in the model registry, marked unknown, and recorded per assertion)"
+  commercial_use: false

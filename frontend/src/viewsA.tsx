@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, post, put, sha256Hex } from "./api";
+import { api, checkSession, post, put, sha256Hex } from "./api";
 import { authHeaders } from "./auth";
 import { Card, ErrorBox, Outcome, short, useAsync, AuthLink } from "./ui";
 import { Support } from "./support";
@@ -148,7 +148,12 @@ export function Evidence({ caseId }: { caseId: string }) {
   const { data, error } = useAsync(() => api<any[]>(`/cases/${caseId}/artifacts`), [caseId]);
   const [verdict, setVerdict] = useState<Record<string, string>>({});
   async function verify(sha: string) {
+    checkSession();
     const r = await fetch(`/cases/${caseId}/artifacts/${sha}`, { headers: authHeaders() });
+    if (!r.ok) {                                        // an error page is not the artifact: never report it as a hash mismatch
+      setVerdict((v) => ({ ...v, [sha]: `could not fetch the bytes (HTTP ${r.status}); nothing was checked` }));
+      return;
+    }
     const ok = (await sha256Hex(await r.arrayBuffer())) === sha;
     setVerdict((v) => ({ ...v, [sha]: ok ? "✓ bytes match their SHA-256" : "✗ MISMATCH" }));
   }
