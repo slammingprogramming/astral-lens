@@ -1,0 +1,32 @@
+api_version: "astral.plugin/v1"
+id: "connector.ofac-sdn"
+version: "1.0.0"
+title: "OFAC SDN list (bulk XML)"
+
+stage: ingest
+direction: internal          # reads a file the operator already ingested; contacts nothing
+footprint: none
+
+consumes:
+  - type: Query
+    required: [name, dataset_artifact]
+produces: [Person, Company, Vessel, Airplane]
+
+capabilities: [artifact.path]
+
+config:
+  type: object
+  properties:
+    min_match: { type: number, minimum: 0, maximum: 1, default: 0.85 }
+    limit: { type: integer, minimum: 1, maximum: 50, default: 10 }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+resources: { accelerator: cpu_only, ram_mb: 256 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "US government work (public domain)"
+  commercial_use: true
+origin: "us-ofac"

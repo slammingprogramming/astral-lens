@@ -1,0 +1,33 @@
+api_version: "astral.plugin/v1"
+id: "connector.icij-offshore-leaks"
+version: "1.0.0"
+title: "ICIJ Offshore Leaks database (bulk CSV)"
+
+stage: ingest
+direction: internal
+footprint: none
+
+consumes:
+  - type: Query
+    required: [name, nodes]
+produces: [Company, LegalEntity, Address, Ownership, Directorship, Associate]
+
+capabilities: [artifact.path]
+
+config:
+  type: object
+  properties:
+    min_match: { type: number, minimum: 0, maximum: 1, default: 0.88 }
+    limit: { type: integer, minimum: 1, maximum: 50, default: 10 }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+resources: { accelerator: cpu_only, ram_mb: 512 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "ODbL 1.0 (database) and CC BY-SA (contents): attribution and share-alike apply to derived databases"
+  commercial_use: true
+  attribution: "International Consortium of Investigative Journalists (ICIJ) Offshore Leaks Database"
+origin: "icij"

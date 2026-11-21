@@ -1,0 +1,39 @@
+api_version: "astral.plugin/v1"
+id: "connector.overture"
+version: "1.0.0"
+title: "Overture Maps places, buildings or addresses near a point"
+
+stage: ingest
+direction: pull
+footprint: third_party
+
+consumes:
+  - type: Query
+    required: [lat, lon]
+produces: [Address]
+
+capabilities: [http.fetch, parquet.query]
+
+config:
+  type: object
+  properties:
+    stac_base: { type: string, default: "https://stac.overturemaps.org" }
+    release: { type: string, default: "", description: "e.g. 2026-10-21.0; empty = the catalogue's latest (Overture keeps about two months of releases)" }
+    feature_type: { type: string, enum: [place, building, address], default: place }
+    radius_m: { type: integer, minimum: 50, maximum: 2000, default: 300 }
+    limit: { type: integer, minimum: 1, maximum: 200, default: 50 }
+    max_files: { type: integer, minimum: 1, maximum: 4, default: 2 }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+# Reads are bounded by the host (48 MiB, 120 range requests, 40 row groups per file); the rate limit keeps requests polite.
+rate_limit: { requests: 60, per: 1m, scope: host }
+resources: { accelerator: cpu_only, ram_mb: 512 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "Places: per-source (CDLA-Permissive-2.0, Apache-2.0, CC0-1.0); buildings, transportation and base: ODbL 1.0 with OpenStreetMap attribution; addresses: per country. See docs.overturemaps.org/attribution"
+  commercial_use: null
+  attribution: "Data from Overture Maps Foundation and its listed sources; for buildings also © OpenStreetMap contributors"
+origin: "overture-maps"

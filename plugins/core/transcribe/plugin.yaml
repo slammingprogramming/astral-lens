@@ -1,0 +1,32 @@
+api_version: "astral.plugin/v1"
+id: "core.transcribe"
+version: "1.0.0"
+title: "Speech transcription with timecodes"
+
+stage: extract
+direction: internal
+footprint: none
+
+consumes:
+  - type: MediaFile
+    required: [artifact]
+produces:
+  - Document
+
+capabilities: [media.audio, audio.vad, asr.transcribe, diarize.speakers, artifact.put]
+
+config:
+  type: object
+  properties:
+    language: { type: [string, "null"], default: null, description: "ISO code; null = let the backend detect" }
+    diarize: { type: boolean, default: true }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+resources: { accelerator: cpu_only, ram_mb: 4096 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "none (local computation; model licences are in the model registry)"
+  commercial_use: true

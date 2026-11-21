@@ -1,0 +1,36 @@
+api_version: "astral.plugin/v1"
+id: "connector.graphsense"
+version: "1.0.0"
+title: "GraphSense address context (self-hosted)"
+
+stage: ingest
+direction: pull
+footprint: third_party
+
+consumes:
+  - type: Query
+    required: [address]
+produces: [CryptoWallet]
+
+capabilities: [http.fetch]
+
+config:
+  type: object
+  required: [base_url]
+  properties:
+    base_url: { type: string, description: "your GraphSense REST instance, e.g. http://localhost:9000" }
+    currency: { type: string, default: "btc", description: "btc, eth, ltc, bch, zec ..." }
+    include_entity: { type: boolean, default: true }
+    max_tags: { type: integer, minimum: 1, maximum: 100, default: 25 }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+rate_limit: { requests: 60, per: 1m, scope: host }
+resources: { accelerator: cpu_only, ram_mb: 64 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "tags and clusters come from the instance you point at; its tag sources' licences apply"
+  commercial_use: null
+origin: "graphsense"

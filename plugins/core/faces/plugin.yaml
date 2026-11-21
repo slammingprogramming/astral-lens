@@ -1,0 +1,34 @@
+api_version: "astral.plugin/v1"
+id: "core.faces"
+version: "1.0.0"
+title: "Face detection and embedding"
+
+stage: extract
+direction: internal
+footprint: none
+
+consumes:
+  - type: Image
+    required: [artifact]
+produces:
+  - FaceRegion
+
+capabilities: [face.embed, face.index, image.hash]
+
+config:
+  type: object
+  properties:
+    max_faces: { type: integer, minimum: 1, maximum: 200, default: 20 }
+    min_score: { type: number, minimum: 0.3, maximum: 0.99, default: 0.7 }
+    prefer: { type: [string, "null"], default: null }
+    allow_noncommercial: { type: boolean, default: false, description: "knowing opt-in to a non-commercial-licence backend" }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+resources: { accelerator: cpu_only, ram_mb: 1024 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "none (local computation; model licences are in the model registry and recorded per assertion)"
+  commercial_use: true

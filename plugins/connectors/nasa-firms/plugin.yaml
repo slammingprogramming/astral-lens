@@ -1,0 +1,39 @@
+api_version: "astral.plugin/v1"
+id: "connector.nasa-firms"
+version: "1.0.0"
+title: "Satellite fire detections (NASA FIRMS)"
+
+stage: ingest
+direction: pull
+footprint: third_party
+
+consumes:
+  - type: Query
+    required: [lat, lon]
+produces: [Event]
+
+capabilities: [http.fetch]
+secrets: [FIRMS_MAP_KEY]
+
+config:
+  type: object
+  properties:
+    base_url: { type: string, default: "https://firms.modaps.eosdis.nasa.gov" }
+    source: { type: string, enum: ["VIIRS_SNPP_NRT", "VIIRS_NOAA20_NRT", "VIIRS_NOAA21_NRT", "MODIS_NRT", "VIIRS_SNPP_SP", "VIIRS_NOAA20_SP", "MODIS_SP"], default: "VIIRS_SNPP_NRT" }
+    radius_km: { type: number, minimum: 1, maximum: 200, default: 25 }
+    days: { type: integer, minimum: 1, maximum: 5, default: 2 }
+    max_detections: { type: integer, minimum: 1, maximum: 1000, default: 200 }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+# FIRMS: 5000 transactions per 10 minutes per key (checked 2026-11-07).
+rate_limit: { requests: 30, per: 1m, scope: credential }
+resources: { accelerator: cpu_only, ram_mb: 64 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "NASA EOSDIS / FIRMS data; see NASA's data use policy"
+  commercial_use: null
+  attribution: "We acknowledge the use of data from NASA's Fire Information for Resource Management System (FIRMS)."
+origin: "nasa-firms"

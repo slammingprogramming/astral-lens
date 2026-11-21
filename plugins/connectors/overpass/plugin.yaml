@@ -1,0 +1,38 @@
+api_version: "astral.plugin/v1"
+id: "connector.overpass"
+version: "1.0.0"
+title: "OpenStreetMap features near a point (Overpass)"
+
+stage: ingest
+direction: pull
+footprint: third_party
+
+consumes:
+  - type: Query
+    required: [lat, lon]
+produces: [Address]
+
+capabilities: [http.fetch]
+
+config:
+  type: object
+  properties:
+    base_url: { type: string, default: "https://overpass-api.de/api/interpreter", description: "use your own instance for regular or commercial use (usage policy)" }
+    radius_m: { type: integer, minimum: 10, maximum: 5000, default: 250 }
+    selector: { type: string, default: "", description: "OSM key or key=value, e.g. amenity=cafe; empty = anything with a name" }
+    limit: { type: integer, minimum: 1, maximum: 200, default: 50 }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+# OSM wiki (checked 2026-11-07): one-off use under 10,000 queries / 1 GB a day; regular use a hundredth of that;
+# identify the app, no parallel scripts, wait 30 s after HTTP 429/406.
+rate_limit: { requests: 6, per: 1m, scope: host }
+resources: { accelerator: cpu_only, ram_mb: 64 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "OpenStreetMap contributors, ODbL 1.0: attribution required, derived databases are share-alike"
+  commercial_use: null
+  attribution: "© OpenStreetMap contributors"
+origin: "openstreetmap"

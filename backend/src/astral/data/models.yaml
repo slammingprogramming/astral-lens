@@ -1,0 +1,258 @@
+# Model registry seed (ADR-0002, invariant 8). One row per model weight set.
+#
+# licence_class:   permissive | attribution | restricted | non-commercial | copyleft | unknown
+# commercial_use:  true | false | null (null = unknown; preflight treats unknown as
+#                  a warning, never as permission)
+# verified:        primary  = read from the model card / LICENSE of the official repo
+#                  secondary = reported by a secondary source, NOT confirmed
+# checked:         date the licence was last checked (2026-11-05 for this pass)
+#
+# Assume a permissive-looking repository has non-permissive weights until
+# checked (project policy, docs/05 and ADR-0002). Entries default to unknown/null until someone checks.
+
+models:
+  - id: yunet
+    capability: face.detect
+    licence: MIT
+    licence_class: permissive
+    commercial_use: true
+    default: true
+    verified: primary
+    checked: 2026-11-05
+    source: https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet
+    notes: >
+      Docs previously said Apache-2.0; the model LICENSE is MIT. Training data is
+      WIDER FACE, whose dataset card on Hugging Face (a mirror; the official
+      site failed TLS) says CC-BY-NC-ND-4.0. Whether a dataset licence binds
+      trained weights is an open legal question; recorded, not resolved.
+
+  - id: sface
+    capability: face.embed
+    licence: Apache-2.0
+    licence_class: permissive
+    commercial_use: true
+    default: true
+    verified: primary
+    checked: 2026-11-05
+    source: https://github.com/opencv/opencv_zoo/tree/main/models/face_recognition_sface
+    notes: >
+      Licence file is Apache-2.0. The OpenCV README does not state which
+      training set its weights used; the SFace paper reports CASIA-WebFace,
+      VGGFace2 and MS-Celeb-1M, the last withdrawn in 2019. InsightFace treats
+      models trained on those sets as non-commercial research only. Upstream
+      data terms are UNRESOLVED; do not describe this as fully licence-clean.
+
+  - id: insightface-buffalo_l
+    capability: face.embed
+    licence: InsightFace model licence (custom)
+    licence_class: non-commercial
+    commercial_use: false
+    default: false
+    verified: primary
+    checked: 2026-11-05
+    source: https://github.com/deepinsight/insightface
+    notes: >
+      Official pages name buffalo_l and antelopev2 explicitly; buffalo_s/m/sc
+      are covered by the same general policy but not individually named. The
+      library code is MIT, which is why the one-line API silently downloads
+      non-commercial weights. Commercial licence: custom tier, contact
+      recognition-oss-pack@insightface.ai. Knowing opt-in only.
+
+  - id: ultralytics-yolo
+    capability: object.detect
+    licence: AGPL-3.0
+    licence_class: copyleft
+    commercial_use: null
+    default: false
+    verified: secondary
+    checked: 2026-11-05
+    source: https://github.com/ultralytics/ultralytics
+    notes: AGPL-3.0 including trained weights (per the project's licence review). Not the default.
+
+  - id: rt-detrv2-r18vd
+    capability: object.detect
+    licence: Apache-2.0
+    licence_class: permissive
+    commercial_use: true
+    default: true
+    verified: primary
+    checked: 2026-11-05
+    source: https://huggingface.co/PekingU/rtdetr_v2_r18vd
+    notes: Only the r18vd variant was checked. COCO annotation terms not checked.
+
+  - id: qwen2.5-vl-3b-instruct
+    capability: vlm.caption
+    licence: Qwen Research License
+    licence_class: non-commercial
+    commercial_use: false
+    default: false
+    verified: primary
+    checked: 2026-11-05
+    source: https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct
+    notes: >
+      Confirmed research-only (non-commercial). GGUF derivatives presumably
+      inherit this (inference). Replaced as the small-tier VLM default.
+
+  - id: qwen2.5-vl-7b-instruct
+    capability: vlm.caption
+    licence: Apache-2.0
+    licence_class: permissive
+    commercial_use: true
+    default: false
+    verified: primary
+    checked: 2026-11-05
+    source: https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct
+    notes: Too large for the 8 GB tier except heavily quantized.
+
+  - id: qwen3-vl-2b-instruct
+    capability: vlm.caption
+    licence: Apache-2.0
+    licence_class: permissive
+    commercial_use: true
+    default: true
+    verified: primary
+    checked: 2026-11-05
+    source: https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct-GGUF
+    notes: >
+      GGUF Q4_K_M ~1.11 GB, Q8_0 ~1.83 GB, with an mmproj vision file. Header
+      read only; footprint on the reference box is a measurement obligation.
+
+  - id: qwen3-vl-4b-instruct
+    capability: vlm.caption
+    licence: Apache-2.0
+    licence_class: permissive
+    commercial_use: true
+    default: false
+    verified: primary
+    checked: 2026-11-05
+    source: https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct-GGUF
+    notes: GGUF Q4_K_M ~2.5 GB with mmproj. Header read only.
+
+  - id: qwen3.5-4b
+    capability: llm.complete
+    licence: Apache-2.0
+    licence_class: permissive
+    commercial_use: true
+    default: true
+    verified: primary
+    checked: 2026-11-05
+    source: https://huggingface.co/Qwen/Qwen3.5-4B
+    notes: The model page lists ~5B parameters despite the name; size claims unchecked.
+
+  - id: gliner-multi-v2.1
+    capability: ner.extract
+    licence: Apache-2.0
+    licence_class: permissive
+    commercial_use: true
+    default: true
+    verified: primary
+    checked: 2026-11-05
+    source: https://huggingface.co/urchade/gliner_multi-v2.1
+    notes: Pin the version. GLiNER v0/v1 are CC-BY-NC. The knowledgator variant was not checked.
+
+  - id: madlad400-3b-mt
+    capability: translate.text
+    licence: Apache-2.0
+    licence_class: permissive
+    commercial_use: true
+    default: true
+    verified: primary
+    checked: 2026-11-05
+    source: https://huggingface.co/google/madlad400-3b-mt
+    notes: Model card says not assessed for production use; trained on web-crawled data.
+
+  - id: nllb-200
+    capability: translate.text
+    licence: CC-BY-NC-4.0
+    licence_class: non-commercial
+    commercial_use: false
+    default: false
+    verified: secondary
+    checked: 2026-11-05
+    source: https://huggingface.co/facebook/nllb-200-distilled-600M
+    notes: Listed as a licence trap in the project's licence review; not re-read in this pass.
+
+  - id: parakeet-tdt-0.6b-v3
+    capability: asr.transcribe
+    licence: CC-BY-4.0
+    licence_class: attribution
+    commercial_use: true
+    default: true
+    verified: primary
+    checked: 2026-11-05
+    source: https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3
+    notes: >
+      Attribution required. The community ONNX conversion
+      (istupakov/parakeet-tdt-0.6b-v3-onnx) is also CC-BY-4.0, but its card does
+      not describe INT8; the "INT8 ONNX" claim is UNVERIFIED and must be
+      checked at file level before it is relied on.
+
+  - id: faster-whisper-large-v3
+    capability: asr.transcribe
+    licence: MIT
+    licence_class: permissive
+    commercial_use: true
+    default: false
+    verified: secondary
+    checked: 2026-11-06
+    source: https://github.com/SYSTRAN/faster-whisper
+    notes: >
+      Whisper code and weights are MIT, recalled from memory and NOT re-read from
+      the primary model card in this pass; the CTranslate2 conversion's card was
+      not checked. Used as the GPU-tier and fallback ASR.
+
+  - id: pyannote-community-1
+    capability: diarize.speakers
+    licence: CC-BY-4.0
+    licence_class: attribution
+    commercial_use: null
+    default: true
+    verified: primary
+    checked: 2026-11-05
+    source: https://huggingface.co/pyannote/speaker-diarization-community-1
+    notes: >
+      Card is silent on commercial use. Gated: users must accept conditions and
+      share contact details, so air-gapped installs need the token flow at
+      image-build time. Cite the three papers.
+
+  - id: silero-vad
+    capability: audio.vad
+    licence: MIT
+    licence_class: permissive
+    commercial_use: true
+    default: true
+    verified: primary
+    checked: 2026-11-05
+    source: https://github.com/snakers4/silero-vad
+    notes: README badge alt text says CC BY-NC 4.0 but the LICENSE file is MIT; the LICENSE governs.
+
+  - id: bge-m3
+    capability: embed.text
+    licence: MIT
+    licence_class: permissive
+    commercial_use: true
+    default: true
+    verified: primary
+    checked: 2026-11-05
+    source: https://huggingface.co/BAAI/bge-m3
+
+  - id: bge-reranker-v2-m3
+    capability: rerank.text
+    licence: Apache-2.0
+    licence_class: permissive
+    commercial_use: true
+    default: true
+    verified: primary
+    checked: 2026-11-05
+    source: https://huggingface.co/BAAI/bge-reranker-v2-m3
+
+  - id: marker-surya
+    capability: ocr.document
+    licence: Modified OpenRAIL-M ($5M revenue cap)
+    licence_class: restricted
+    commercial_use: null
+    default: false
+    verified: secondary
+    checked: 2026-11-05
+    source: https://github.com/datalab-to/marker
+    notes: Listed as a licence trap in the project's licence review; not re-read in this pass.

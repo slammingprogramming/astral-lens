@@ -1,0 +1,35 @@
+api_version: "astral.plugin/v1"
+id: "example.email-finder"
+version: "1.0.0"
+title: "Example: email finder"
+
+stage: extract
+direction: internal
+footprint: none
+
+consumes:
+  - type: Document
+    required: [artifact, text]
+produces:
+  - Document
+  - EmailAddress
+
+config:
+  type: object
+  properties:
+    lowercase: { type: boolean, default: true }
+    max_results: { type: integer, minimum: 1, default: 100 }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+
+resources: { accelerator: cpu_only, ram_mb: 64 }
+
+health:
+  check: "main.py:selfcheck"
+  interval: 24h
+
+licence:
+  code: "MIT"
+  data: "none (local computation)"
+  commercial_use: true

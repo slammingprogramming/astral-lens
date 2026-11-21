@@ -1,0 +1,19 @@
+{
+  "site": "gitlab.com",
+  "category": "code",
+  "licence": "AGPL-3.0-or-later",
+  "attribution": "original to this project",
+  "verified_live": null,
+  "username_regex": "^[A-Za-z0-9_.-]{2,255}$",
+  "check": {
+    "url": "https://gitlab.com/{username}",
+    "method": "GET",
+    "present_when": {"status": 200},
+    "absent_when": {"status": 404}
+  },
+  "known": {"present": "gitlab-bot", "absent": "zz-no-such-account-9x7"},
+  "fixtures": {
+    "present": {"status": 200, "body": "<html>profile</html>"},
+    "absent": {"status": 404, "body": "<html>404</html>"}
+  }
+}

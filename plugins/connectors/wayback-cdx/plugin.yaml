@@ -1,0 +1,35 @@
+api_version: "astral.plugin/v1"
+id: "connector.wayback-cdx"
+version: "1.0.0"
+title: "Internet Archive Wayback CDX"
+
+stage: ingest
+direction: pull
+footprint: third_party
+
+consumes:
+  - type: Query
+    required: [url]
+produces: [WebPage, WebSnapshot]
+
+capabilities: [http.fetch]
+
+config:
+  type: object
+  properties:
+    base_url: { type: string, default: "http://web.archive.org" }
+    limit: { type: integer, minimum: 1, maximum: 500, default: 50 }
+    collapse_identical: { type: boolean, default: true }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+# No published rate limit (checked 2026-11-05, doc 07 §1); honour 429/Retry-After.
+rate_limit: { requests: 30, per: 1m, scope: host }
+resources: { accelerator: cpu_only, ram_mb: 64 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "Internet Archive terms of use; archived content belongs to its owners"
+  commercial_use: null
+origin: "internet-archive"

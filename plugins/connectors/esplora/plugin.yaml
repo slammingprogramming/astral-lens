@@ -1,0 +1,37 @@
+api_version: "astral.plugin/v1"
+id: "connector.esplora"
+version: "1.0.0"
+title: "Bitcoin address history (Esplora / mempool.space)"
+
+stage: ingest
+direction: pull
+footprint: third_party
+
+consumes:
+  - type: Query
+    required: [address]
+produces: [CryptoWallet, Payment]
+
+capabilities: [http.fetch]
+
+config:
+  type: object
+  properties:
+    base_url: { type: string, default: "https://blockstream.info/api", description: "any Esplora-compatible API; self-hosting avoids sending the address to a third party" }
+    pages: { type: integer, minimum: 1, maximum: 8, default: 1, description: "pages of confirmed history (25 transactions each)" }
+    pagination: { type: string, enum: ["esplora", "after_txid"], default: "esplora", description: "esplora = /txs/chain/:last_seen_txid; after_txid = mempool.space's ?after_txid=" }
+    max_counterparties: { type: integer, minimum: 0, maximum: 50, default: 10 }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+# API.md (checked 2026-11-07) states no rate limit and no terms for the public instance. mempool.space enforces
+# limits (HTTP 429, repeat offenders banned) without publishing numbers; the connector honours 429/Retry-After.
+rate_limit: { requests: 30, per: 1m, scope: host }
+resources: { accelerator: cpu_only, ram_mb: 64 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "public blockchain data served by the configured Esplora instance; that operator's terms apply"
+  commercial_use: null
+origin: "esplora"

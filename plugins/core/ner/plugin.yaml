@@ -1,0 +1,40 @@
+api_version: "astral.plugin/v1"
+id: "core.ner"
+version: "1.0.0"
+title: "Entity extraction from text"
+
+stage: extract
+direction: internal
+footprint: none
+
+consumes:
+  - type: Document
+    required: [artifact, text_artifact]
+produces:
+  - Person
+  - Organization
+  - EmailAddress
+  - PhoneNumber
+  - BankAccount
+  - LegalEntity
+  - CryptoWallet
+  - Url
+
+capabilities: [ner.extract, artifact.get]
+
+config:
+  type: object
+  properties:
+    prefer: { type: [string, "null"], default: null }
+    labels: { type: array, items: { type: string }, default: [] }
+    max_occurrences: { type: integer, minimum: 1, default: 20 }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+resources: { accelerator: cpu_only, ram_mb: 512 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "none (local computation)"
+  commercial_use: true

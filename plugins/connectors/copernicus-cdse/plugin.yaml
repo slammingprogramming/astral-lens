@@ -1,0 +1,37 @@
+api_version: "astral.plugin/v1"
+id: "connector.copernicus-cdse"
+version: "1.0.0"
+title: "Satellite scenes over a point (Copernicus Data Space)"
+
+stage: ingest
+direction: pull
+footprint: third_party
+
+consumes:
+  - type: Query
+    required: [lat, lon]
+produces: [SatelliteProduct]
+
+capabilities: [http.fetch]
+
+config:
+  type: object
+  properties:
+    base_url: { type: string, default: "https://catalogue.dataspace.copernicus.eu" }
+    collection: { type: string, default: "SENTINEL-2" }
+    days_back: { type: integer, minimum: 1, maximum: 365, default: 30 }
+    top: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+# Rate limits were not read from the documentation (checked 2026-11-07); be modest.
+rate_limit: { requests: 20, per: 1m, scope: host }
+resources: { accelerator: cpu_only, ram_mb: 64 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "Copernicus Sentinel data: free, full and open; acknowledge the source (verify current terms before redistributing)"
+  commercial_use: null
+  attribution: "Contains modified Copernicus Sentinel data."
+origin: "copernicus-cdse"

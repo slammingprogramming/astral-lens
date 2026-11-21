@@ -1,0 +1,42 @@
+api_version: "astral.plugin/v1"
+id: "connector.blockchair"
+version: "1.0.0"
+title: "Bitcoin-like address history (Blockchair)"
+
+stage: ingest
+direction: pull
+footprint: third_party
+
+consumes:
+  - type: Query
+    required: [address]
+produces: [CryptoWallet, Payment]
+
+capabilities: [http.fetch]
+secrets: [BLOCKCHAIR_API_KEY]
+
+config:
+  type: object
+  properties:
+    base_url: { type: string, default: "https://api.blockchair.com" }
+    chain:
+      type: string
+      enum: [bitcoin, bitcoin-cash, litecoin, bitcoin-sv, dogecoin, dash, groestlcoin, zcash, ecash]
+      default: bitcoin
+    limit: { type: integer, minimum: 1, maximum: 1000, default: 100, description: "transactions requested (the API allows up to 10000; each costs the same request)" }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+# Written from the Blockchair/Blockchair.Support copy of the API documentation (v2.0.80, 2021-07). Blockchair's own
+# docs page (blockchair.com/api/docs) was not readable when this was written, so the live API may differ. Keyless use
+# is documented as ~1440 requests per day, 30 per minute on the free plan; commercial use needs a paid key and
+# acceptance of Blockchair's terms (https://blockchair.com/terms), which this project has not reviewed.
+rate_limit: { requests: 20, per: 1m, scope: credential }
+resources: { accelerator: cpu_only, ram_mb: 64 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "Blockchair API terms apply (not reviewed); chain data itself is public"
+  commercial_use: null
+origin: "blockchair"

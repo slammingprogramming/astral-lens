@@ -1,0 +1,5 @@
+# Shows a "Sponsor" button on GitHub. Only Ko-fi can be listed here: GitHub's file takes platform
+# handles and URLs, not wallet addresses. The BTC, ETH and XMR addresses are in README.md under
+# "Contact and support the project" and in SUPPORT.md, and inside the app under Settings ->
+# About, contact and supporting Astral Lens.
+ko_fi: scenprogramming

@@ -1,0 +1,31 @@
+api_version: "astral.plugin/v1"
+id: "core.ocr"
+version: "1.0.0"
+title: "Text from an image (OCR)"
+
+stage: extract
+direction: internal
+footprint: none
+
+consumes:
+  - type: Image
+    required: [artifact]
+produces:
+  - Document
+
+capabilities: [ocr.image, artifact.put]
+
+config:
+  type: object
+  properties:
+    lang: { type: string, default: "eng", description: "Tesseract language code(s), e.g. eng+deu" }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+resources: { accelerator: cpu_only, ram_mb: 1024 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "none (local computation)"
+  commercial_use: true

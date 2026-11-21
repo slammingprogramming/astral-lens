@@ -1,0 +1,35 @@
+api_version: "astral.plugin/v1"
+id: "connector.opencorporates"
+version: "1.0.0"
+title: "OpenCorporates"
+
+stage: ingest
+direction: pull
+footprint: third_party
+
+consumes:
+  - type: Query
+    required: [name]
+produces: [Company]
+
+capabilities: [http.fetch]
+secrets: [OPENCORPORATES_API_TOKEN]
+
+config:
+  type: object
+  properties:
+    base_url: { type: string, default: "https://api.opencorporates.com/v0.4" }
+    max_results: { type: integer, minimum: 1, maximum: 30, default: 10 }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+rate_limit: { requests: 50, per: 1m, scope: credential }
+resources: { accelerator: cpu_only, ram_mb: 64 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "ODbL 1.0 with attribution/share-alike; the free tier is limited (200 calls/month) and the API needs a token"
+  commercial_use: null
+  attribution: "Source: OpenCorporates (https://opencorporates.com)"
+origin: "opencorporates"

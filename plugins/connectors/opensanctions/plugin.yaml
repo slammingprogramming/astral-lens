@@ -1,0 +1,38 @@
+api_version: "astral.plugin/v1"
+id: "connector.opensanctions"
+version: "1.0.0"
+title: "OpenSanctions (API or bulk file)"
+
+stage: ingest
+direction: pull
+footprint: third_party
+
+consumes:
+  - type: Query
+    required: [name]
+produces: [Person, Company, Organization, LegalEntity, Sanction]
+
+capabilities: [http.fetch, artifact.path]
+secrets: [OPENSANCTIONS_API_KEY]
+
+config:
+  type: object
+  properties:
+    base_url: { type: string, default: "https://api.opensanctions.org" }
+    dataset: { type: string, default: "default" }
+    limit: { type: integer, minimum: 1, maximum: 50, default: 10 }
+    min_match: { type: number, minimum: 0, maximum: 1, default: 0.8, description: "bulk-file mode only" }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+rate_limit: { requests: 30, per: 1m, scope: credential }
+resources: { accelerator: cpu_only, ram_mb: 256 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+# Invariant 8: this licence is surfaced by preflight for commercial deployments.
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "CC BY-NC 4.0 — commercial use, including compliance screening, needs a paid OpenSanctions licence"
+  commercial_use: false
+  attribution: "Data from OpenSanctions (https://www.opensanctions.org)"
+origin: "opensanctions"

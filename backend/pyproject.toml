@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "astral-lens"
+version = "0.0.1"
+description = "Astral Lens: self-hosted OSINT aggregation and multimodal investigation platform"
+requires-python = ">=3.11"
+license = "AGPL-3.0-or-later"    # ADR-0002
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "pydantic>=2.7",
+  "psycopg[binary,pool]>=3.2",
+  "jsonschema>=4.22",
+  "pyyaml>=6.0",
+  "rapidfuzz>=3.6",       # MIT   name similarity (03 §6)
+  "anyascii>=0.3",        # ISC   transliteration
+  "pypdf>=4.0",           # BSD   text-layer PDFs
+  "cryptography>=42",     # Apache-2.0 OR BSD   encrypted secret store
+]
+
+# Optional heavy backends are NOT dependencies: each is detected at runtime and
+# its absence is reported as a visible degradation (backends.py).
+#   docling  - layout-aware parsing            gliner / spacy - model NER
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx>=0.27", "pypdf>=4"]
+# Face detection/embedding (YuNet + SFace through OpenCV) and perceptual hashing.
+faces = ["opencv-python-headless>=4.10,<5"]
+# Write-once preservation in an S3 bucket with Object Lock.
+worm = ["boto3>=1.34"]
+# Dense retrieval and reranking (ONNX, in-process): ASTRAL_EMBED_MODEL / ASTRAL_RERANK_MODEL.
+dense = ["fastembed>=0.9"]
+# PDF case summary (BSD).
+pdf = ["reportlab>=4"]
+# Bounded WebSocket listening for the ws.collect capability (AISStream).
+streams = ["websockets>=14"]
+# Bounded range reads of remote Parquet files for the parquet.query capability (Overture Maps).
+parquet = ["pyarrow>=15"]
+
+[project.urls]
+Funding = "https://ko-fi.com/scenprogramming"
+Contact = "https://smp14.simplex.im/a#3gZ-zeHs4QrFZKLAN0o3SC_XQJXhj1eYBVTO_c0FAtg"
+
+[project.scripts]
+astral = "astral.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+astral = ["migrations/*.sql", "data/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --basetemp=.pytest_tmp"

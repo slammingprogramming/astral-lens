@@ -1,0 +1,37 @@
+api_version: "astral.plugin/v1"
+id: "connector.etherscan"
+version: "1.0.0"
+title: "EVM address history (Etherscan API V2)"
+
+stage: ingest
+direction: pull
+footprint: third_party
+
+consumes:
+  - type: Query
+    required: [address]
+produces: [CryptoWallet, Payment]
+
+capabilities: [http.fetch]
+secrets: [ETHERSCAN_API_KEY]
+
+config:
+  type: object
+  properties:
+    base_url: { type: string, default: "https://api.etherscan.io/v2/api" }
+    chainid: { type: string, default: "1", description: "1 = Ethereum mainnet; any chain Etherscan V2 supports" }
+    page_size: { type: integer, minimum: 1, maximum: 1000, default: 100 }
+    pages: { type: integer, minimum: 1, maximum: 5, default: 1 }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+# Etherscan's rate-limit page (checked 2026-11-07): free tier 3 calls per second, daily cap on selected chains.
+rate_limit: { requests: 3, per: 1s, scope: credential }
+resources: { accelerator: cpu_only, ram_mb: 64 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "Etherscan API terms apply; chain data itself is public"
+  commercial_use: null
+origin: "etherscan"

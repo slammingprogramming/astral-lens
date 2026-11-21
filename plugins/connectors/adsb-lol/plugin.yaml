@@ -1,0 +1,36 @@
+api_version: "astral.plugin/v1"
+id: "connector.adsb-lol"
+version: "1.0.0"
+title: "Aircraft near a point (adsb.lol)"
+
+stage: ingest
+direction: pull
+footprint: third_party
+
+consumes:
+  - type: Query
+    required: [lat, lon]
+produces: [Airplane, Event]
+
+capabilities: [http.fetch]
+
+config:
+  type: object
+  properties:
+    base_url: { type: string, default: "https://api.adsb.lol" }
+    radius_nm: { type: integer, minimum: 1, maximum: 250, default: 25, description: "nautical miles; the API maximum is 250" }
+    max_aircraft: { type: integer, minimum: 1, maximum: 500, default: 100 }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+# No rate limit is stated in the OpenAPI document (checked 2026-11-07); be modest.
+rate_limit: { requests: 20, per: 1m, scope: host }
+resources: { accelerator: cpu_only, ram_mb: 64 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "ODbL 1.0 (stated in the adsb.lol API description): attribution required, derived databases are share-alike"
+  commercial_use: null
+  attribution: "adsb.lol community data, ODbL"
+origin: "adsb-lol"

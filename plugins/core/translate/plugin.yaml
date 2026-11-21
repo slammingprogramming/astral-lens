@@ -1,0 +1,31 @@
+api_version: "astral.plugin/v1"
+id: "core.translate"
+version: "1.0.0"
+title: "Machine translation of a text artifact"
+
+stage: extract
+direction: internal
+footprint: none
+
+consumes:
+  - type: Document
+    required: [artifact, text_artifact]
+produces:
+  - Document
+
+capabilities: [translate.text, artifact.get, artifact.put]
+
+config:
+  type: object
+  properties:
+    target: { type: string, default: "en" }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+resources: { accelerator: cpu_only, ram_mb: 8192 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "none (local computation; model licences are in the model registry)"
+  commercial_use: true

@@ -1,0 +1,38 @@
+api_version: "astral.plugin/v1"
+id: "connector.aisstream"
+version: "1.0.0"
+title: "Live vessel positions in an area (AISStream)"
+
+stage: ingest
+direction: pull
+footprint: third_party
+
+consumes:
+  - type: Query
+    required: [lat, lon]
+produces: [Vessel, Event]
+
+capabilities: [ws.collect]
+secrets: [AISSTREAM_API_KEY]
+
+config:
+  type: object
+  properties:
+    url: { type: string, default: "wss://stream.aisstream.io/v0/stream" }
+    radius_km: { type: number, minimum: 1, maximum: 500, default: 50 }
+    listen_seconds: { type: integer, minimum: 3, maximum: 30, default: 12, description: "how long to listen; a quiet area may yield nothing in a short window" }
+    max_vessels: { type: integer, minimum: 1, maximum: 500, default: 100 }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+# AISStream documentation (checked 2026-11-07): 3 connections per account and per IP, subscription within 3 s of
+# connecting, no SLA or uptime guarantee, free API key required. Keep one listen at a time.
+rate_limit: { requests: 4, per: 1m, scope: credential }
+resources: { accelerator: cpu_only, ram_mb: 96 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "AISStream terms apply (not reviewed); the ais-message-models schema repository is MIT"
+  commercial_use: null
+origin: "aisstream"

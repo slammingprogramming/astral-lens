@@ -1,0 +1,39 @@
+api_version: "astral.plugin/v1"
+id: "connector.sec-edgar"
+version: "1.0.0"
+title: "SEC EDGAR"
+
+stage: ingest
+direction: pull
+footprint: third_party
+
+consumes:
+  - type: Query
+    required: [name]
+produces: [Company]
+
+capabilities: [http.fetch]
+
+config:
+  type: object
+  required: [contact]
+  properties:
+    contact:
+      type: string
+      description: "e-mail or URL identifying the operator; SEC rejects requests without one (403/429)"
+    www_url: { type: string, default: "https://www.sec.gov" }
+    data_url: { type: string, default: "https://data.sec.gov" }
+    max_results: { type: integer, minimum: 1, maximum: 10, default: 3 }
+    min_match: { type: number, minimum: 0, maximum: 1, default: 0.85 }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+rate_limit: { requests: 10, per: 1s, scope: host }          # published: 10 req/s
+resources: { accelerator: cpu_only, ram_mb: 128 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "US government work (public domain), subject to SEC fair-access policy"
+  commercial_use: true
+origin: "us-sec"

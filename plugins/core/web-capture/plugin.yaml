@@ -1,0 +1,29 @@
+api_version: "astral.plugin/v1"
+id: "core.web-capture"
+version: "1.0.0"
+title: "Evidence-grade web capture (WARC)"
+
+stage: ingest
+direction: pull
+footprint: third_party
+
+consumes:
+  - type: Query
+    required: [url]
+produces:
+  - WebPage
+
+capabilities: [web.capture]
+
+config: { type: object }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+rate_limit: { requests: 30, per: 1m, scope: host }
+resources: { accelerator: cpu_only, ram_mb: 128 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "the captured site's own terms apply"
+  commercial_use: null

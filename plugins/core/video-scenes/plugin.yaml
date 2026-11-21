@@ -1,0 +1,34 @@
+api_version: "astral.plugin/v1"
+id: "core.video-scenes"
+version: "1.0.0"
+title: "Scene cuts and keyframes"
+
+stage: extract
+direction: internal
+footprint: none
+
+consumes:
+  - type: MediaFile
+    required: [artifact]
+produces:
+  - VideoScene
+
+capabilities: [media.scenes, media.frame, ocr.image]
+
+config:
+  type: object
+  properties:
+    threshold: { type: number, minimum: 0.05, maximum: 0.95, default: 0.4 }
+    max_scenes: { type: integer, minimum: 1, maximum: 2000, default: 200 }
+    ocr: { type: boolean, default: true }
+    ocr_lang: { type: string, default: "eng" }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+resources: { accelerator: cpu_only, ram_mb: 1024 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "none (local computation)"
+  commercial_use: true

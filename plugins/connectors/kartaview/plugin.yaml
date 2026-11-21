@@ -1,0 +1,37 @@
+api_version: "astral.plugin/v1"
+id: "connector.kartaview"
+version: "1.0.0"
+title: "Street-level photo metadata (KartaView; public endpoints unreachable when last checked 2026-11-08)"
+
+stage: ingest
+direction: pull
+footprint: third_party
+
+consumes:
+  - type: Query
+    required: [lat, lon]
+produces: [Image]
+
+capabilities: [http.fetch]
+
+config:
+  type: object
+  properties:
+    api: { type: string, enum: ["1.0-bbox", "2.0-nearby"], default: "1.0-bbox", description: "which API generation to call; see the connector's docstring: written from client code, never run live" }
+    base_url: { type: string, default: "https://kartaview.org", description: "2.0-nearby clients use https://api.openstreetcam.org" }
+    radius_m: { type: integer, minimum: 10, maximum: 1000, default: 200 }
+    limit: { type: integer, minimum: 1, maximum: 1000, default: 100 }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+# No limit is documented by a source we could read; one secondary source says 100 requests an hour without an account.
+rate_limit: { requests: 1, per: 1m, scope: host }
+resources: { accelerator: cpu_only, ram_mb: 64 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "Imagery is published by KartaView under CC BY-SA (4.0 per the OSM wiki); only metadata is recorded. KartaView's terms were not readable when this was written"
+  commercial_use: null
+  attribution: "Imagery: KartaView contributors, CC BY-SA"
+origin: "kartaview"

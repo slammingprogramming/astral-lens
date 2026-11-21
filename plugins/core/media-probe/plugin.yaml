@@ -1,0 +1,32 @@
+api_version: "astral.plugin/v1"
+id: "core.media-probe"
+version: "1.0.0"
+title: "Media metadata, EXIF and Content Credentials"
+
+stage: extract
+direction: internal
+footprint: none
+
+consumes:
+  - type: MediaFile
+    required: [artifact]
+produces:
+  - Video
+  - Audio
+  - Image
+
+capabilities: [media.probe, exif.extract, c2pa.check, image.hash]
+
+config:
+  type: object
+  properties: {}
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+resources: { accelerator: cpu_only, ram_mb: 256 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "none (local computation)"
+  commercial_use: true

@@ -1,0 +1,39 @@
+api_version: "astral.plugin/v1"
+id: "connector.digitraffic-ais"
+version: "1.0.0"
+title: "Vessel positions near a point or by MMSI (Digitraffic Marine, Finland)"
+
+stage: ingest
+direction: pull
+footprint: third_party
+
+consumes:
+  - type: Query
+    required: [lat, lon]
+  - type: Query
+    required: [mmsi]
+produces: [Vessel, Event]
+
+capabilities: [http.fetch]
+
+config:
+  type: object
+  properties:
+    base_url: { type: string, default: "https://meri.digitraffic.fi" }
+    radius_km: { type: number, minimum: 1, maximum: 500, default: 25 }
+    max_vessels: { type: integer, minimum: 1, maximum: 500, default: 100 }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+# Digitraffic (checked 2026-11-07): without a Digitraffic-User header the limit is 60 requests per minute per IP;
+# gzip is mandatory (406 without it); responses are cached about a minute.
+rate_limit: { requests: 30, per: 1m, scope: host }
+resources: { accelerator: cpu_only, ram_mb: 96 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "CC BY 4.0 (Fintraffic): credit \"Source: Fintraffic / digitraffic.fi, license CC 4.0 BY\", link the licence, note any changes"
+  commercial_use: true
+  attribution: "Source: Fintraffic / digitraffic.fi, license CC 4.0 BY"
+origin: "digitraffic-ais"

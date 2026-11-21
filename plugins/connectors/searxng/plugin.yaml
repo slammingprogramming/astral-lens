@@ -1,0 +1,34 @@
+api_version: "astral.plugin/v1"
+id: "connector.searxng"
+version: "1.0.0"
+title: "SearXNG meta-search"
+
+stage: ingest
+direction: pull
+footprint: third_party
+
+consumes:
+  - type: Query
+    required: [name]
+produces: [WebPage]
+
+capabilities: [http.fetch]
+
+config:
+  type: object
+  properties:
+    base_url: { type: string, default: "http://127.0.0.1:8888", description: "your SearXNG instance; json format must be enabled in its settings" }
+    pages: { type: integer, minimum: 1, maximum: 5, default: 1 }
+    categories: { type: string, default: "general" }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+rate_limit: { requests: 20, per: 1m, scope: plugin }
+resources: { accelerator: cpu_only, ram_mb: 64 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "search results; each upstream engine's terms apply"
+  commercial_use: null
+origin: "searxng"

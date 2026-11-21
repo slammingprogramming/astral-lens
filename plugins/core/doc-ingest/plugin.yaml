@@ -1,0 +1,31 @@
+api_version: "astral.plugin/v1"
+id: "core.doc-ingest"
+version: "1.0.0"
+title: "Document text extraction"
+
+stage: extract
+direction: internal
+footprint: none
+
+consumes:
+  - type: Document
+    required: [artifact]
+produces:
+  - Document
+
+capabilities: [text.extract, artifact.put]
+
+config:
+  type: object
+  properties:
+    prefer: { type: [string, "null"], default: null, description: "preferred doc.parse backend" }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+resources: { accelerator: cpu_only, ram_mb: 512 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "none (local computation)"
+  commercial_use: true

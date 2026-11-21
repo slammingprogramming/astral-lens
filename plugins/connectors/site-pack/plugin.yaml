@@ -1,0 +1,35 @@
+api_version: "astral.plugin/v1"
+id: "connector.site-pack"
+version: "1.0.0"
+title: "Account enumeration from site packs"
+
+stage: ingest
+direction: pull
+footprint: target_contact
+
+consumes:
+  - type: Query
+    required: [username]
+produces: [UserAccount]
+
+capabilities: [http.fetch]
+
+config:
+  type: object
+  properties:
+    packs_dir: { type: string, default: "", description: "extra directory of pack files (e.g. a separately licensed third-party set); absolute path" }
+    sites: { type: array, items: { type: string }, default: [], description: "only these sites (empty = all packs)" }
+    max_sites: { type: integer, minimum: 1, maximum: 200, default: 25 }
+    control_probe: { type: boolean, default: true, description: "before reporting an account absent, check that the pack still recognises a known-present account" }
+
+runtimes: [in_process]
+entrypoint: "main.py:invoke"
+rate_limit: { requests: 30, per: 1m, scope: host }
+resources: { accelerator: cpu_only, ram_mb: 64 }
+health: { check: "main.py:selfcheck", interval: 24h }
+
+licence:
+  code: "AGPL-3.0-or-later"
+  data: "bundled packs are original work under AGPL-3.0-or-later; packs from other directories carry their own licence, reported per pack"
+  commercial_use: null
+origin: "site-pack"

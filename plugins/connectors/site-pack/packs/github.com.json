@@ -1,0 +1,22 @@
+{
+  "site": "github.com",
+  "category": "code",
+  "licence": "AGPL-3.0-or-later",
+  "attribution": "original to this project",
+  "verified_live": null,
+  "username_regex": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$",
+  "check": {
+    "url": "https://github.com/{username}",
+    "method": "GET",
+    "present_when": {"status": 200},
+    "absent_when": {"status": 404}
+  },
+  "extract": {
+    "name": {"regex": "<span[^>]*itemprop=\"name\"[^>]*>(.*?)</span>"}
+  },
+  "known": {"present": "torvalds", "absent": "zz-no-such-account-9x7"},
+  "fixtures": {
+    "present": {"status": 200, "body": "<html><span itemprop=\"name\">Someone</span></html>"},
+    "absent": {"status": 404, "body": "<html>Not Found</html>"}
+  }
+}
