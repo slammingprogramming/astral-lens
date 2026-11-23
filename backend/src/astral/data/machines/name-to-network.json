@@ -1,0 +1,16 @@
+{
+  "schema": "astral.machine/v1",
+  "machine": "name-to-network",
+  "version": 1,
+  "description": "Acceptance scenario 3, name to network: screen a person or company against sanctions and look it up in the LEI index and company registries, then look up the companies the registry found and screen the people and companies behind them. Connectors without a key report 'unknown', not 'no hits'. The OFAC and ICIJ bulk datasets need a loaded file, so run them from the entity's transforms.",
+  "seed": {"schemas": ["Person", "Company", "LegalEntity"]},
+  "stages": [
+    {"id": "sanctions", "transform": "connector.opensanctions", "on": ["Person", "Company", "LegalEntity"], "from": "seed", "max_entities": 5},
+    {"id": "lei", "transform": "connector.gleif", "on": ["Company", "LegalEntity"], "from": "seed", "max_entities": 5},
+    {"id": "opencorp", "transform": "connector.opencorporates", "on": ["Company", "LegalEntity"], "from": "seed", "max_entities": 5},
+    {"id": "registry", "transform": "connector.companies-house", "on": ["Person", "Company", "LegalEntity"], "from": "seed", "max_entities": 5},
+    {"id": "expand", "transform": "connector.companies-house", "on": ["Company"], "from": "new", "max_entities": 10},
+    {"id": "screen", "transform": "connector.opensanctions", "on": ["Person", "Company"], "from": "new", "max_entities": 15}
+  ],
+  "limits": {"max_calls": 45}
+}

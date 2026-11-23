@@ -1,0 +1,13 @@
+{
+  "schema": "astral.lens/v1",
+  "lens": "shared-identifier",
+  "version": 1,
+  "description": "Acceptance scenario 4, question to answer: who are the directors of the companies that share an identifier (a phone number, email address, IBAN or address). Answers cite their sources and the composer declines when the evidence is not there.",
+  "inputs": ["identifier"],
+  "question": "Who are the directors of the companies that share {identifier}?",
+  "steps": [
+    {"id": "s1", "type": "search_text", "args": {"query": "{identifier}", "k": 10}},
+    {"id": "s2", "type": "search_text", "args": {"query": "director of a company with {identifier}", "k": 8}},
+    {"id": "s3", "type": "entity_facts", "args": {"name": "{identifier}"}}
+  ]
+}

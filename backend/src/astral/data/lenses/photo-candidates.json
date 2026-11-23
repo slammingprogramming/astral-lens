@@ -1,0 +1,12 @@
+{
+  "schema": "astral.lens/v1",
+  "lens": "photo-candidates",
+  "version": 1,
+  "description": "Acceptance scenario 1, photograph to identity: search the faces in one photo against the case's faces and the watchlist, and gather what is recorded about the photo. Results are ranked candidates, never identifications, and every search is recorded. External face services are not searched: no keyless one exists.",
+  "inputs": ["photo"],
+  "question": "Who might the person in photo {photo} be, and what is recorded about the photo?",
+  "steps": [
+    {"id": "s1", "type": "face_search", "args": {"artifact": "{photo}", "scope": "all", "k": 10}},
+    {"id": "s2", "type": "artifact_facts", "args": {"artifact": "{photo}"}}
+  ]
+}

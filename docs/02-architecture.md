@@ -88,7 +88,18 @@ outputs: [candidate_identities, regions, source_links]
 
 Lenses are data, declare their resource requirements by composition, and are
 exportable and shareable between installs. The five acceptance scenarios in
-[01 — Vision & Scope](01-vision-and-scope.md) are each a shipped Lens.
+[01 — Vision & Scope](01-vision-and-scope.md) were meant to be shipped Lenses.
+
+As built, the example above is narrower. A lens is made of the AI layer's
+read-only steps (`search_text`, `entity_facts`, `artifact_facts`,
+`face_search`), so it reads what the case already holds and cannot run a
+pipeline or contact a service. Scenarios 1, 2 and 4 ship as built-in lenses
+(`photo-candidates`, `media-dossier`, `shared-identifier`). Scenario 3 has to
+query registries, so it ships as a built-in *machine* (`name-to-network`),
+which waits for approval like any connector chain. Scenario 5 is the exhibit
+export, not a pipeline. Reverse-image search is not a stage: every service
+for it needs a paid key. Built-ins are installed into a workspace only on
+request (`GET /builtin`, `POST /builtin/{kind}/{name}/install`).
 
 A plan produced by the planner can be **saved as a Lens**, which is how
 methodology accumulates without anyone writing code.

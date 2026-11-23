@@ -210,6 +210,68 @@ def search(conn: psycopg.Connection, case_id: uuid.UUID, embedding: list[float],
     return out
 
 
+NOTICE = ("Ranked candidates by cosine similarity. A score is not an identification; the reference "
+          "threshold comes from an easy frontal benchmark and does not transfer to poor images.")
+
+
+class ProbeError(Exception):
+    """A probe search that could not be made; `status` is the HTTP status the API answers with."""
+
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+
+
+def search_probe(conn: psycopg.Connection, store: Any, actor: Actor, case_id: uuid.UUID, backends: Any, services: Any | None,
+                 *, artifact: str | None = None, face_id: str | None = None, face_index: int = 0, scope: str = "all",
+                 k: int = 10, min_score: float | None = None, prefer: str | None = None,
+                 allow_noncommercial: bool = False) -> dict[str, Any]:
+    """One face search, from a probe image in the case or an indexed face, and its unconditional record.
+    Shared by the API and by plan steps so both rank and record the same way. The caller authorises."""
+    from astral.backends import NoBackend
+    from astral.compute.models import load_registry
+
+    if not artifact and not face_id:
+        raise ProbeError(422, "give an artifact (probe image) or a face_id")
+    exclude, exclude_face = None, (uuid.UUID(face_id) if face_id else None)
+    if face_id:
+        r = conn.execute("SELECT embedding, model_id, backend, artifact_sha FROM face WHERE id=%s AND case_id=%s",
+                         (exclude_face, case_id)).fetchone()
+        if not r:
+            raise ProbeError(404, "no such face")
+        emb, model_id, backend, qsha, n_faces = r["embedding"], r["model_id"], r["backend"], bytes(r["artifact_sha"]).hex(), 1
+    else:
+        try:
+            res = backends.resolve("face.embed", prefer=prefer, allow_noncommercial=allow_noncommercial)
+        except NoBackend as e:
+            raise ProbeError(503, str(e)) from e
+        data = store.read(conn, actor, case_id, bytes.fromhex(artifact))
+        try:
+            out = res.backend.run(data=data)
+        except Exception as e:                                          # noqa: BLE001 - undecodable image, model failure
+            raise ProbeError(422, f"{res.backend.name} failed: {type(e).__name__}: {e}") from e
+        n_faces = len(out["faces"])
+        if not n_faces:
+            raise ProbeError(422, "no face was detected in the probe image (this is not proof there is none)")
+        if face_index >= n_faces:
+            raise ProbeError(422, f"face_index {face_index} out of range ({n_faces} faces found)")
+        emb, model_id, backend, qsha = out["faces"][face_index]["embedding"], res.backend.model_id, res.backend.name, artifact
+        exclude = bytes.fromhex(artifact)
+    hits, degraded = (services.face_hits(conn, case_id, emb, model_id=model_id, scope=scope, k=k, min_score=min_score,
+                                         exclude_artifact=exclude, exclude_face=exclude_face)
+                      if services is not None else (None, None))
+    engine = "qdrant (exact)" if hits is not None else "postgres"
+    if hits is None:
+        hits = search(conn, case_id, emb, model_id=model_id, scope=scope, k=k, min_score=min_score,
+                      exclude_artifact=exclude, exclude_face=exclude_face)
+    record_search(conn, actor, case_id, query_sha=qsha, model_id=model_id, backend=backend, scope=scope, k=k,
+                  min_score=min_score, results=len(hits))
+    lic = {m: {"licence": v.licence, "licence_class": v.licence_class, "commercial_use": v.commercial_use}
+           for m, v in load_registry().items() if m in (model_id, "yunet")}
+    return {"candidates": hits, "model_id": model_id, "backend": backend, "licences": lic, "faces_in_probe": n_faces,
+            "engine": engine, "degraded": degraded, "notice": NOTICE}
+
+
 def record_search(conn: psycopg.Connection, actor: Actor, case_id: uuid.UUID, *, query_sha: str, model_id: str,
                   backend: str, scope: str, k: int, min_score: float | None, results: int) -> None:
     """The unconditional record. Ids, hashes and counts only: no names, no labels."""

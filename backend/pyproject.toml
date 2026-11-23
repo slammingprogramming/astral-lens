@@ -69,7 +69,7 @@ astral = "astral.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-astral = ["migrations/*.sql", "data/*.yaml"]
+astral = ["migrations/*.sql", "data/*.yaml", "data/lenses/*.json", "data/machines/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -24,7 +24,7 @@ import asyncio
 
 from fastapi.responses import Response
 
-from astral import ai, analysis, audit, auth, cases, egress, hub, services as services_mod, worm, investigate, lens, machines, workbench, monitoring, projector, resolution, resolver, views
+from astral import ai, analysis, audit, auth, builtin, cases, egress, hub, services as services_mod, worm, investigate, lens, machines, workbench, monitoring, projector, resolution, resolver, views
 from astral.assertions import AssertionRejected, AssertionWriter
 from astral.compute.preflight import run_preflight
 from astral.config import Settings
@@ -1170,6 +1170,26 @@ def create_app(settings: Settings | None = None, db: Database | None = None) -> 
                 raise HTTPException(422, str(e)) from e
         return {"lens": defn["lens"], "version": defn["version"], "trust": verdict["status"], "detail": verdict["detail"]}
 
+    # ---- built-in lenses and machines (the acceptance scenarios, installed on request)
+    @app.get("/builtin")
+    def builtin_catalogue() -> list[dict[str, Any]]:
+        with app.state.db.connection() as conn:
+            _lens_policy(conn, "case.read")
+            return builtin.catalogue(conn, actor)
+
+    @app.post("/builtin/{kind}/{name}/install", status_code=201)
+    def builtin_install(kind: str, name: str) -> dict[str, Any]:
+        if kind not in builtin.KINDS:
+            raise HTTPException(404, f"kind is one of {sorted(builtin.KINDS)}")
+        with app.state.db.connection() as conn:
+            _lens_policy(conn, f"{kind}.write")
+            try:
+                return builtin.install(conn, actor, kind, name)
+            except builtin.BuiltinError as e:
+                raise HTTPException(404, str(e)) from e
+            except lens.LensError as e:
+                raise HTTPException(409, str(e)) from e
+
     @app.post("/cases/{case_id}/lenses/{name}/run", status_code=201)
     def run_lens(case_id: uuid.UUID, name: str, body: LensRun) -> dict[str, Any]:
         """Fill a lens and PROPOSE the plan. It runs only after the operator approves it, like any plan."""
@@ -1539,7 +1559,8 @@ def create_app(settings: Settings | None = None, db: Database | None = None) -> 
                 verifiers += [citations.LlmVerifier(client, "strict"), citations.LlmVerifier(client, "contradiction")]
             conn.execute("UPDATE ai_plan SET status='running' WHERE id=%s", (plan_id,))
             try:
-                res = ai.run_plan(conn, app.state.store, actor, case_id, row["question"], row["plan"], client, verifiers, app.state.services)
+                res = ai.run_plan(conn, app.state.store, actor, case_id, row["question"], row["plan"], client, verifiers, app.state.services,
+                                 app.state.host.backends)
             except Exception as e:                                      # noqa: BLE001
                 conn.execute("UPDATE ai_plan SET status='failed', finished_at=now(), result=%s WHERE id=%s",
                              (psycopg.types.json.Jsonb({"error": f"{type(e).__name__}: {e}"}), plan_id))
@@ -1591,45 +1612,16 @@ def create_app(settings: Settings | None = None, db: Database | None = None) -> 
         """Ranked CANDIDATES against the case's own faces and the operator's watchlist.
         Every call is recorded (ids, hashes, counts) and nothing is ever a verdict."""
         from astral import faces
-        from astral.compute.models import load_registry
 
-        if not body.artifact and not body.face_id:
-            raise HTTPException(422, "give an artifact (probe image) or a face_id")
         with app.state.db.connection() as conn:
             policy.authorize(conn, actor, "plugin.invoke", case_id)
-            exclude = None
-            exclude_face = uuid.UUID(body.face_id) if body.face_id else None
-            if body.face_id:
-                r = conn.execute("SELECT embedding, model_id, backend, artifact_sha FROM face WHERE id=%s AND case_id=%s",
-                                 (uuid.UUID(body.face_id), case_id)).fetchone()
-                if not r:
-                    raise HTTPException(404, "no such face")
-                emb, model_id, backend, qsha = r["embedding"], r["model_id"], r["backend"], bytes(r["artifact_sha"]).hex()
-                n_faces = 1
-            else:
-                res, out = _detect(conn, case_id, body.artifact, body)
-                n_faces = len(out["faces"])
-                if not n_faces:
-                    raise HTTPException(422, "no face was detected in the probe image (this is not proof there is none)")
-                if body.face_index >= n_faces:
-                    raise HTTPException(422, f"face_index {body.face_index} out of range ({n_faces} faces found)")
-                emb, model_id, backend, qsha = (out["faces"][body.face_index]["embedding"], res.backend.model_id,
-                                                res.backend.name, body.artifact)
-                exclude = bytes.fromhex(body.artifact)
-            hits, degraded = app.state.services.face_hits(conn, case_id, emb, model_id=model_id, scope=body.scope, k=body.k,
-                                                          min_score=body.min_score, exclude_artifact=exclude, exclude_face=exclude_face)
-            engine = "qdrant (exact)" if hits is not None else "postgres"
-            if hits is None:
-                hits = faces.search(conn, case_id, emb, model_id=model_id, scope=body.scope, k=body.k,
-                                    min_score=body.min_score, exclude_artifact=exclude, exclude_face=exclude_face)
-            faces.record_search(conn, actor, case_id, query_sha=qsha, model_id=model_id, backend=backend,
-                                scope=body.scope, k=body.k, min_score=body.min_score, results=len(hits))
-            lic = {m: {"licence": v.licence, "licence_class": v.licence_class, "commercial_use": v.commercial_use}
-                   for m, v in load_registry().items() if m in (model_id, "yunet")}
-        return {"candidates": hits, "model_id": model_id, "backend": backend, "licences": lic,
-                "faces_in_probe": n_faces, "engine": engine, "degraded": degraded,
-                "notice": "Ranked candidates by cosine similarity. A score is not an identification; the reference "
-                          "threshold comes from an easy frontal benchmark and does not transfer to poor images."}
+            try:
+                return faces.search_probe(conn, app.state.store, actor, case_id, app.state.host.backends, app.state.services,
+                                          artifact=body.artifact, face_id=body.face_id, face_index=body.face_index,
+                                          scope=body.scope, k=body.k, min_score=body.min_score, prefer=body.prefer,
+                                          allow_noncommercial=body.allow_noncommercial)
+            except faces.ProbeError as e:
+                raise HTTPException(e.status, str(e)) from e
 
     @app.post("/cases/{case_id}/watchlist", status_code=201)
     def watchlist_enrol(case_id: uuid.UUID, body: EnrolBody) -> dict[str, Any]:

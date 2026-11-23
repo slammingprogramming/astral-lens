@@ -5,9 +5,12 @@ parameters and a question template. Running one does NOT run anything: it fills 
 and proposes a plan, which must be approved like any other, so a lens received from someone else
 can never act without the operator seeing and approving what it will do.
 
-Scope today. Only the AI layer's step types exist (search_text, entity_facts), so only retrieval
-lenses can be expressed. The design's stages for faces, reverse-image search and geolocation are
-not lens stages yet, and the five acceptance scenarios are not shipped as lenses.
+Scope today. A lens uses the AI layer's read-only step types: search_text, entity_facts,
+artifact_facts (what is recorded about one file, including regions a geolocation run recorded)
+and face_search (case faces and watchlist, results kept apart as candidates). Reverse-image search
+is not a step: it needs a paid external service, so it would not be read-only. The acceptance
+scenarios that a read-only plan can express ship as built-in lenses (builtin.py); "name to
+network" contacts registries and ships as a built-in machine instead.
 
 Sharing. A lens exports as a package with the hash of its definition and, if the exporter has a
 signing key, an Ed25519 signature. Import verifies it against the operator's trust store. A
@@ -84,7 +87,8 @@ def validate(defn: Any) -> dict[str, Any]:
     if set(inputs) - used:
         raise LensError(f"inputs never used: {sorted(set(inputs) - used)}")
     try:
-        ai.validate_plan({"steps": json.loads(json.dumps(_fill_steps(defn, {i: "x" for i in inputs})))})
+        # a 64-hex stand-in satisfies every argument type, including a file's sha256
+        ai.validate_plan({"steps": json.loads(json.dumps(_fill_steps(defn, {i: "0" * 64 for i in inputs})))})
     except ai.PlanError as e:
         raise LensError(f"steps are not a valid plan: {e}") from e
     return defn

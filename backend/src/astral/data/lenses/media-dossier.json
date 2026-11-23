@@ -1,0 +1,11 @@
+{
+  "schema": "astral.lens/v1",
+  "lens": "media-dossier",
+  "version": 1,
+  "description": "Acceptance scenario 2, video to dossier: gather what the pipelines recorded about one video or image (transcript, faces, on-screen text, objects, guessed regions, named entities) into one cited report. It reads what was already processed; it does not run the pipelines.",
+  "inputs": ["media"],
+  "question": "What is recorded about media file {media}?",
+  "steps": [
+    {"id": "s1", "type": "artifact_facts", "args": {"artifact": "{media}"}}
+  ]
+}

@@ -6,6 +6,15 @@ invent identifiers, raise a grade, or fetch from the network. Its plans are made
 READ steps over the case, so `footprint` is always none. With a model configured it
 plans and composes through `llm.LlmClient` (egress-checked); without one it falls back
 to a rule planner and an EXTRACTIVE composer that quotes passages, and says so.
+
+Step types. search_text and entity_facts read text and recorded facts and are the only steps the
+model planner is offered. artifact_facts reads the facts and relations the case recorded from one
+file or anything derived from it (metadata, entities named in its text or transcript, faces, object
+tracks, regions). face_search compares the faces in one
+probe image with the case's own faces and the operator's watchlist; it never leaves the machine, is
+recorded like any face search, and its results are CANDIDATES listed apart from the answer: a face
+score is never turned into a statement about who someone is. Those two steps take a file's sha256,
+so they appear in plans that a lens or an operator writes, not in plans a model invents.
 """
 
 from __future__ import annotations
@@ -22,7 +31,12 @@ from astral.db import Actor
 from astral.evidence import EvidenceStore
 
 MAX_STEPS, MAX_K = 6, 20
-STEP_TYPES = {"search_text": {"query": str, "k": int}, "entity_facts": {"name": str}}
+STEP_TYPES = {"search_text": {"query": str, "k": int}, "entity_facts": {"name": str},
+              "artifact_facts": {"artifact": str}, "face_search": {"artifact": str, "scope": str, "k": int}}
+PLANNER_STEPS = ("search_text", "entity_facts")          # what a model planner may propose
+FACE_SCOPES = ("all", "case", "watchlist")
+MAX_ARTIFACT_FACTS, MAX_DERIVED = 40, 500
+_SHA = re.compile(r"^[0-9a-f]{64}$")
 SKIP_PREDICATES = {"schema", "hasText", "hasSegments", "contentHash", "mimeType", "container"}
 _NAME = re.compile(r"\b[A-Z][\w'’-]*(?:\s+[A-Z][\w'’-]*)+\b")          # allows middle initials: Jane Q Doe
 
@@ -32,7 +46,9 @@ class PlanError(ValueError):
 
 
 # ----------------------------------------------------------------------- plans
-def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
+def validate_plan(plan: dict[str, Any], allowed: tuple[str, ...] | None = None) -> dict[str, Any]:
+    """The plan reduced to its typed steps; anything else a planner sent is dropped."""
+    allowed = tuple(STEP_TYPES) if allowed is None else allowed
     steps = plan.get("steps")
     if not isinstance(steps, list) or not steps:
         raise PlanError("a plan needs at least one step")
@@ -41,20 +57,32 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
     ids: set[str] = set()
     for s in steps:
         t = s.get("type")
-        if t not in STEP_TYPES:
-            raise PlanError(f"unknown step type {t!r}; allowed: {sorted(STEP_TYPES)}")
+        if t not in allowed:
+            raise PlanError(f"unknown step type {t!r}; allowed: {sorted(allowed)}")
         args = s.get("args") or {}
         for k, typ in STEP_TYPES[t].items():
             if k == "k":
-                args["k"] = min(int(args.get("k", 8)), MAX_K)
+                try:
+                    kv = int(args.get("k", 8))
+                except (TypeError, ValueError):
+                    raise PlanError(f"step {s.get('id')} ({t}): k must be a whole number") from None
+                args["k"] = max(1, min(kv, MAX_K))
+            elif k == "scope":
+                args["scope"] = args.get("scope") or "all"
+                if args["scope"] not in FACE_SCOPES:
+                    raise PlanError(f"step {s.get('id')} ({t}): scope is one of {list(FACE_SCOPES)}")
             elif not isinstance(args.get(k), typ) or not args[k].strip():
                 raise PlanError(f"step {s.get('id')} ({t}) needs a non-empty {k!r}")
+            elif k == "artifact":
+                args[k] = args[k].strip().lower()
+                if not _SHA.match(args[k]):
+                    raise PlanError(f"step {s.get('id')} ({t}): artifact must be a file's sha256 (64 hex characters)")
         s["args"] = {k: args[k] for k in STEP_TYPES[t]}
         if s.get("id") in ids:
             raise PlanError(f"duplicate step id {s.get('id')!r}")
         ids.add(s["id"])
         s["depends_on"] = [d for d in s.get("depends_on", []) if d in ids and d != s["id"]]
-    return plan
+    return {"steps": steps}
 
 
 def rules_plan(question: str) -> dict[str, Any]:
@@ -68,12 +96,12 @@ def rules_plan(question: str) -> dict[str, Any]:
 def llm_plan(client: Any, question: str) -> dict[str, Any]:
     schema = {"type": "object", "required": ["steps"], "additionalProperties": False, "properties": {"steps": {
         "type": "array", "maxItems": MAX_STEPS, "items": {"type": "object", "required": ["id", "type", "args"], "properties": {
-            "id": {"type": "string"}, "type": {"type": "string", "enum": sorted(STEP_TYPES)},
+            "id": {"type": "string"}, "type": {"type": "string", "enum": sorted(PLANNER_STEPS)},
             "args": {"type": "object"}}}}}}
     sys_p = ("You plan how to answer a question from an investigation case. Steps: search_text{query,k} searches the "
              "case's documents; entity_facts{name} fetches recorded facts about a named entity. Use at most "
              f"{MAX_STEPS} steps. You cannot browse or contact anyone.")
-    return validate_plan(client.chat_json(sys_p, question, schema, max_tokens=400))
+    return validate_plan(client.chat_json(sys_p, question, schema, max_tokens=400), allowed=PLANNER_STEPS)
 
 
 def store_plan(conn: psycopg.Connection, actor: Actor, case_id: uuid.UUID, question: str, plan: dict[str, Any], planner: str,
@@ -94,14 +122,107 @@ def store_plan(conn: psycopg.Connection, actor: Actor, case_id: uuid.UUID, quest
 
 def estimate(plan: dict[str, Any], client: Any | None) -> dict[str, Any]:
     """Shown to the operator BEFORE anything runs."""
+    faces = sum(s["type"] == "face_search" for s in plan["steps"])
+    note = "plans only read this case; nothing is fetched and no one is contacted"
+    if faces:
+        note += (f"; {faces} face search(es) compare a probe image with this case's faces and watchlist, run on this "
+                 "machine, are recorded in the audit log, and return ranked candidates, never an identification")
     return {"steps": len(plan["steps"]), "llm_calls": 1 if client else 0, "egress": (client.mode if client else "none"),
-            "footprint": "none", "writes_assertions": False,
-            "note": "plans only read this case; nothing is fetched and no one is contacted"}
+            "footprint": "none", "writes_assertions": False, "face_searches": faces, "note": note}
 
 
 # ------------------------------------------------------------------- execution
+def _add_facts(conn: psycopg.Connection, case_id: uuid.UUID, evidence: dict[str, dict[str, Any]], cluster: Any,
+               caption: str, limit: int) -> int:
+    n = 0
+    for p in conn.execute(
+            "SELECT predicate, value, assertion_id, source_grade, info_grade, independent_sources FROM proj_property"
+            " WHERE case_id=%s AND cluster_id=%s AND NOT (predicate = ANY(%s)) ORDER BY assertion_id LIMIT %s",
+            (case_id, cluster, list(SKIP_PREDICATES), limit)):
+        v = p["value"] if not isinstance(p["value"], (dict, list)) else str(p["value"])
+        if len(str(v)) > 300:                       # boxes, paths and other bulk values are not statements
+            continue
+        if any(e.get("assertion_id") == p["assertion_id"] for e in evidence.values()):
+            continue
+        eid = f"E{len(evidence) + 1}"
+        evidence[eid] = {"id": eid, "kind": "fact", "assertion_id": p["assertion_id"],
+                         "text": f"{caption} — {p['predicate']}: {v}", "entity": caption,
+                         "source_grade": p["source_grade"], "info_grade": p["info_grade"],
+                         "independent_sources": p["independent_sources"]}
+        n += 1
+    return n
+
+
+def _artifact_facts(conn: psycopg.Connection, case_id: uuid.UUID, evidence: dict[str, dict[str, Any]], sha: str,
+                    notes: list[str]) -> None:
+    """Facts and relations this case recorded FROM one file: assertions whose evidence is the file
+    itself or something derived from it (extracted text, transcript, keyframes, crops)."""
+    shas = list(dict.fromkeys(r["sha256"] for r in conn.execute(
+        "WITH RECURSIVE d(sha256, depth) AS (SELECT %s::bytea, 0 UNION ALL"
+        " SELECT a.sha256, d.depth + 1 FROM artifact a JOIN d ON a.parent_sha256 = d.sha256 WHERE d.depth < 3)"
+        " SELECT sha256 FROM d LIMIT %s", (bytes.fromhex(sha), MAX_DERIVED + 1))))
+    if len(shas) > MAX_DERIVED:
+        notes.append(f"file {sha[:12]}… has more than {MAX_DERIVED} derived files; facts cited only by the rest were not read")
+        shas = shas[:MAX_DERIVED]
+    rows = conn.execute(
+        "SELECT * FROM ("
+        " SELECT p.assertion_id, e.caption AS subj, p.predicate, p.value, NULL AS obj,"
+        "        p.source_grade, p.info_grade, p.independent_sources"
+        " FROM proj_property p JOIN assertion a ON a.id = p.assertion_id"
+        " LEFT JOIN proj_entity e ON e.case_id = p.case_id AND e.cluster_id = p.cluster_id"
+        " WHERE p.case_id = %(c)s AND a.case_id = %(c)s AND a.evidence && %(s)s::bytea[] AND NOT (p.predicate = ANY(%(skip)s))"
+        " UNION ALL"
+        " SELECT g.assertion_id, es.caption, g.predicate, NULL, eo.caption, g.source_grade, g.info_grade, g.independent_sources"
+        " FROM proj_edge g JOIN assertion a ON a.id = g.assertion_id"
+        " LEFT JOIN proj_entity es ON es.case_id = g.case_id AND es.cluster_id = g.subject_cluster"
+        " LEFT JOIN proj_entity eo ON eo.case_id = g.case_id AND eo.cluster_id = g.object_cluster"
+        " WHERE g.case_id = %(c)s AND a.case_id = %(c)s AND a.evidence && %(s)s::bytea[]"
+        ") f ORDER BY assertion_id LIMIT %(n)s",
+        {"c": case_id, "s": shas, "skip": list(SKIP_PREDICATES), "n": 4 * MAX_ARTIFACT_FACTS}).fetchall()
+    if not rows:
+        notes.append(f"nothing recorded in this case cites file {sha[:12]}…; ingest it (or run its pipelines) before asking about it")
+        return
+    n = 0
+    for r in rows:
+        if n >= MAX_ARTIFACT_FACTS:
+            notes.append(f"file {sha[:12]}…: stopped after {MAX_ARTIFACT_FACTS} facts; more are recorded than were read")
+            break
+        v = r["obj"] if r["obj"] is not None else (r["value"] if not isinstance(r["value"], (dict, list)) else str(r["value"]))
+        if v is None or len(str(v)) > 300 or any(e.get("assertion_id") == r["assertion_id"] for e in evidence.values()):
+            continue                                   # boxes, paths and other bulk values are not statements
+        subj = r["subj"] or "an unnamed entity"
+        eid = f"E{len(evidence) + 1}"
+        evidence[eid] = {"id": eid, "kind": "fact", "assertion_id": r["assertion_id"],
+                         "text": f"{subj} — {r['predicate']}: {v}", "entity": subj, "source_grade": r["source_grade"],
+                         "info_grade": r["info_grade"], "independent_sources": r["independent_sources"]}
+        n += 1
+
+
+def _face_step(conn: psycopg.Connection, store: EvidenceStore, actor: Actor, case_id: uuid.UUID, s: dict[str, Any],
+               backends: Any | None, services: Any | None) -> dict[str, Any]:
+    from astral import faces
+
+    base = {"step": s["id"], "artifact": s["args"]["artifact"], "scope": s["args"]["scope"]}
+    if backends is None:
+        return {**base, "status": "not run", "reason": "no face backend registry was available to this run"}
+    try:
+        r = faces.search_probe(conn, store, actor, case_id, backends, services, artifact=s["args"]["artifact"],
+                               scope=s["args"]["scope"], k=s["args"]["k"])
+    except faces.ProbeError as e:
+        return {**base, "status": "not run", "reason": str(e)}
+    except Exception as e:                                       # noqa: BLE001 - e.g. the file is not in this case
+        return {**base, "status": "not run", "reason": f"{type(e).__name__}: {e}"}
+    keep = ("face_id", "artifact", "frame_ms", "score", "above_reference", "reference_threshold", "watchlist", "label",
+            "backend", "model_id")
+    return {**base, "status": "done", "model_id": r["model_id"], "backend": r["backend"], "engine": r["engine"],
+            "degraded": r["degraded"], "faces_in_probe": r["faces_in_probe"], "licences": r["licences"],
+            "candidates": [{k: c.get(k) for k in keep} for c in r["candidates"]], "notice": r["notice"]}
+
+
 def gather(conn: psycopg.Connection, store: EvidenceStore, actor: Actor, case_id: uuid.UUID,
-           plan: dict[str, Any], services: Any | None = None) -> tuple[dict[str, dict[str, Any]], list[str], list[str]]:
+           plan: dict[str, Any], services: Any | None = None, backends: Any | None = None,
+           candidates: list[dict[str, Any]] | None = None) -> tuple[dict[str, dict[str, Any]], list[str], list[str]]:
+    """Evidence for the answer. Face-search results go to `candidates` (if given), never into evidence."""
     retrieval.ensure_indexed(conn, store, actor, case_id)
     evidence: dict[str, dict[str, Any]] = {}
     notes: list[str] = []
@@ -117,21 +238,20 @@ def gather(conn: psycopg.Connection, store: EvidenceStore, actor: Actor, case_id
                     eid = f"E{len(evidence) + 1}"
                     evidence[eid] = {"id": eid, "kind": "passage", "text_sha": h["text_sha"], "start": h["start"],
                                      "end": h["end"], "text": h["text"], "rrf": h["rrf"]}
+        elif s["type"] == "artifact_facts":
+            _artifact_facts(conn, case_id, evidence, s["args"]["artifact"], notes)
+        elif s["type"] == "face_search":
+            r = _face_step(conn, store, actor, case_id, s, backends, services)
+            if r["status"] != "done":
+                notes.append(f"face search {s['id']} was not run: {r['reason']}")
+            if candidates is not None:
+                candidates.append(r)
         else:
             name = s["args"]["name"]
             for ent in conn.execute(
                     "SELECT cluster_id, caption, schema_name FROM proj_entity WHERE case_id=%s AND caption ILIKE %s"
                     " ORDER BY member_count DESC LIMIT 3", (case_id, f"%{name}%")).fetchall():
-                for p in conn.execute(
-                        "SELECT predicate, value, assertion_id, source_grade, info_grade, independent_sources FROM proj_property"
-                        " WHERE case_id=%s AND cluster_id=%s AND NOT (predicate = ANY(%s)) ORDER BY assertion_id LIMIT 12",
-                        (case_id, ent["cluster_id"], list(SKIP_PREDICATES))):
-                    v = p["value"] if not isinstance(p["value"], (dict, list)) else str(p["value"])
-                    eid = f"E{len(evidence) + 1}"
-                    evidence[eid] = {"id": eid, "kind": "fact", "assertion_id": p["assertion_id"],
-                                     "text": f"{ent['caption']} — {p['predicate']}: {v}", "entity": ent["caption"],
-                                     "source_grade": p["source_grade"], "info_grade": p["info_grade"],
-                                     "independent_sources": p["independent_sources"]}
+                _add_facts(conn, case_id, evidence, ent["cluster_id"], ent["caption"], 12)
     return evidence, notes, rankers
 
 
@@ -221,9 +341,11 @@ def _confidence(anchors: list[dict[str, Any]], evidence: dict[str, dict[str, Any
 
 
 def run_plan(conn: psycopg.Connection, store: EvidenceStore, actor: Actor, case_id: uuid.UUID, question: str,
-             plan: dict[str, Any], client: Any | None, verifiers: list[Any], services: Any | None = None) -> dict[str, Any]:
+             plan: dict[str, Any], client: Any | None, verifiers: list[Any], services: Any | None = None,
+             backends: Any | None = None) -> dict[str, Any]:
     t0 = time.perf_counter()
-    evidence, notes, rankers = gather(conn, store, actor, case_id, plan, services)
+    candidates: list[dict[str, Any]] = []
+    evidence, notes, rankers = gather(conn, store, actor, case_id, plan, services, backends, candidates)
     composer, raw = "extractive (no model)", []
     if client is not None and evidence:
         try:
@@ -247,7 +369,7 @@ def run_plan(conn: psycopg.Connection, store: EvidenceStore, actor: Actor, case_
         notes.append("no model verifier is available: claims can be at most 'weakly verified' (existence, verbatim span, "
                      "identifiers and word overlap were checked; entailment was not)")
     gaps = _gaps(conn, case_id, evidence, accepted, rejected, notes)
-    out = {"question": question, "composer": composer, "claims": accepted, "rejected": rejected,
+    out = {"question": question, "composer": composer, "claims": accepted, "rejected": rejected, "face_candidates": candidates,
            "evidence": list(evidence.values()), "rankers": rankers, "notes": notes, "gaps": gaps,
            "verifiers": [{"name": v.name, "weak": v.weak} for v in verifiers],
            "latency_ms": int((time.perf_counter() - t0) * 1000)}
@@ -285,6 +407,20 @@ def render_report(r: dict[str, Any]) -> str:
                           for a in c["anchors"])
         flag = " — **flagged for human review**" if c["needs_human_review"] else ""
         L.append(f"{i}. {c['text']}  \n   _Confidence: {c['confidence']}; check: {c['status'].replace('_', ' ')}; sources: {cites}_{flag}")
+    for fs in r.get("face_candidates") or []:
+        L += ["", f"## Face candidates ({fs['step']}, scope {fs['scope']})", ""]
+        if fs["status"] != "done":
+            L.append(f"_Not run: {fs['reason']}_")
+            continue
+        L.append(f"_{fs['notice']} Model {fs['model_id']} via {fs['backend']}, {fs['engine']}._")
+        if not fs["candidates"]:
+            L.append("_No indexed face in this scope to compare with. That is not evidence the person is absent._")
+        for i, c in enumerate(fs["candidates"], 1):
+            where = f"watchlist entry '{c['label']}'" if c.get("watchlist") else f"file {c['artifact'][:12]}…"
+            at = f" at {c['frame_ms']} ms" if c.get("frame_ms") is not None else ""
+            ref = "" if c.get("above_reference") is None else (
+                " (above the reference threshold)" if c["above_reference"] else " (below the reference threshold)")
+            L.append(f"{i}. score {c['score']}{ref}: {where}{at}, face {c['face_id']}")
     L += ["", "## Gaps", ""] + [f"- {x}" for x in (r["gaps"] or ["No coverage gaps were recorded for the last search run."])]
     ids = sorted({a["assertion_id"] for c in r["claims"] for a in c["anchors"] if a["kind"] == "assertion"})
     L += ["", "## Indicators", "",

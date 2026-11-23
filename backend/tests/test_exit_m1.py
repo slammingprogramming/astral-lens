@@ -97,13 +97,16 @@ def install_all(client, db):
 
 
 def vouch_sources(db, actor):
-    """The operator grades sources up front. Origin keys come from manifests."""
+    """The operator grades sources up front. Origin keys come from manifests. The grade is set
+    explicitly: on the shared test database an earlier test may already have created the source
+    at the default F, and get_or_create_source keeps an existing row as it is."""
     grades = {"connector.gleif": ("gleif", "B"), "connector.companies-house": ("uk-companies-house", "A"),
               "connector.opensanctions": ("opensanctions", "B"), "connector.searxng": ("searxng", "E")}
     with db.connection() as conn:
         for name, (origin, g) in grades.items():
-            cases.get_or_create_source(conn, actor, kind="plugin", name=name, origin_key=origin,
-                                       default_source_grade=g)
+            sid = cases.get_or_create_source(conn, actor, kind="plugin", name=name, origin_key=origin,
+                                             default_source_grade=g)
+            cases.set_source_grade(conn, actor, sid, g)
 
 
 def test_m1_exit_name_to_network(client, db, actor, server):
