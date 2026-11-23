@@ -1,10 +1,11 @@
 """Hybrid retrieval over a case's text, fused by reciprocal rank (RRF).
 
-Rankers in use today: Postgres full-text search, and a fuzzy lexical ranker that
-tolerates misspellings and transliteration variants. A DENSE ranker (BGE-M3) and a
-cross-encoder reranker are NOT built: no embedding model is installed. The result
-says which rankers ran, so a caller can tell lexical-only retrieval from the real
-thing; it will miss paraphrases that share no words with the query.
+Rankers: Postgres full-text search and a fuzzy lexical ranker (misspellings and
+transliteration variants) always run; a context-header ranker runs when headers exist;
+OpenSearch, a dense embedder and a reranker run when astral.services configures them.
+The result says which rankers ran, so a caller can tell lexical-only retrieval (which
+misses paraphrases that share no words with the query) from the hybrid. With the dense
+ranker the fusion is weighted (HYBRID_WEIGHTS); without it every ranker counts equally.
 
 Chunks are an index, not evidence. Each carries (text_sha, start_char, end_char),
 which is the citation anchor a verified claim points at.
@@ -71,13 +72,33 @@ def ensure_indexed(conn: psycopg.Connection, store: EvidenceStore, actor: Actor,
     return added
 
 
-def rrf(rankings: list[list[int]], k: int = 60) -> dict[int, float]:
-    """Reciprocal rank fusion: score(d) = sum over rankers of 1/(k + rank)."""
+def rrf(rankings: list[list[int]], k: int = 60, weights: list[float] | None = None) -> dict[int, float]:
+    """Reciprocal rank fusion: score(d) = sum over rankers r of w_r/(k + rank_r(d)); every w_r is 1 when no
+    weights are given."""
     score: dict[int, float] = {}
-    for r in rankings:
+    for n, r in enumerate(rankings):
+        w = 1.0 if weights is None else weights[n]
         for i, doc in enumerate(r, 1):
-            score[doc] = score.get(doc, 0.0) + 1.0 / (k + i)
+            score[doc] = score.get(doc, 0.0) + w / (k + i)
     return score
+
+
+# Fusion weights used when the dense ranker answers. Tuned on SciFact's train claims by nDCG@10 and checked once on
+# its 300 test claims: 0.751 with equal weights and k=60, 0.801 with these, 0.777 dense alone
+# (bench/retrieval/fusion_tune.py; docs/11-roadmap.md). The tuned fuzzy weight was 0; it is kept at 0.1 because
+# the fuzzy ranker exists for misspelled and transliterated names, which SciFact does not test, and the floor cost
+# nothing on either split. OpenSearch and the context-header ranker were not in the tuning run: they are lexical,
+# so they take the full-text weight (an assumption, not a measurement). Without the dense ranker the fusion stays
+# at equal weights and k=60: tuning the lexical-only stack moved test nDCG@10 by 0.0005, which is noise.
+HYBRID_K = 5
+HYBRID_WEIGHTS = {"fts": 0.5, "fuzzy": 0.1, "context-headers": 0.5, "opensearch": 0.5, "dense": 1.0}
+
+
+def fusion(rankers: list[str]) -> tuple[int, list[float] | None]:
+    """(k, weights) for a set of rankers, by name, in the order they were added."""
+    if not any(r.startswith("dense:") for r in rankers):
+        return 60, None
+    return HYBRID_K, [HYBRID_WEIGHTS["dense" if r.startswith("dense:") else r] for r in rankers]
 
 
 def _fts_ids(conn: psycopg.Connection, case_id: uuid.UUID, query: str, limit: int) -> list[int]:
@@ -149,7 +170,8 @@ def search(conn: psycopg.Connection, case_id: uuid.UUID, query: str, *, k: int =
             if why:
                 notes.append(why)
     want = max(k * 3, 20) if services is not None and services.dense is not None and services.dense.can_rerank else k
-    fused = sorted(rrf(rankings).items(), key=lambda x: (-x[1], x[0]))[:want]
+    fk, fw = fusion(rankers)
+    fused = sorted(rrf(rankings, fk, fw).items(), key=lambda x: (-x[1], x[0]))[:want]
     if not fused:
         return {"hits": [], "rankers": rankers, "notes": notes}
     rows = {r["id"]: r for r in conn.execute(

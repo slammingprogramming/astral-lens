@@ -84,6 +84,17 @@ def test_rrf_rewards_agreement_between_rankers():
     assert retrieval.rrf([[7]]) == {7: 1 / 61}               # a single ranker degenerates to its own order
 
 
+def test_fusion_weights_apply_only_when_the_dense_ranker_ran():
+    assert retrieval.fusion(["fts", "fuzzy"]) == (60, None)
+    assert retrieval.fusion(["fts", "fuzzy", "context-headers", "opensearch"]) == (60, None)
+    k, w = retrieval.fusion(["fts", "fuzzy", "opensearch", "dense:intfloat/multilingual-e5-large@qdrant"])
+    assert k == retrieval.HYBRID_K and w == [0.5, 0.1, 0.5, 1.0]
+    # weighted: a chunk first for the dense ranker beats one first for full-text alone
+    s = retrieval.rrf([[1, 2], [2, 1]], k, [0.5, 1.0])
+    assert s[2] > s[1] and abs(s[2] - (0.5 / (k + 2) + 1.0 / (k + 1))) < 1e-12
+    assert retrieval.rrf([[1, 2], [2, 1]]) == retrieval.rrf([[1, 2], [2, 1]], 60, [1.0, 1.0])
+
+
 def test_chunks_are_verbatim_slices():
     text = ("Sentence one is here. " * 80) + "\n" + ("Another line follows. " * 60)
     ch = retrieval.chunk_text(text)
